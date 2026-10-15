@@ -137,9 +137,11 @@ def create_torch_dataset(
     if repo_id == "fake":
         return FakeDataset(model_config, num_samples=1024)
 
-    dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id)
+    dataset_meta = lerobot_dataset.LeRobotDatasetMetadata(repo_id, root=data_config.dataset_root)
     dataset = lerobot_dataset.LeRobotDataset(
         data_config.repo_id,
+        root=data_config.dataset_root,
+        video_backend=data_config.video_backend,
         delta_timestamps={
             key: [t / dataset_meta.fps for t in range(action_horizon)] for key in data_config.action_sequence_keys
         },
@@ -451,7 +453,11 @@ class TorchDataLoader:
 
     def __iter__(self):
         num_items = 0
+        epoch = 0
         while True:
+            if isinstance(self._data_loader.sampler, torch.utils.data.distributed.DistributedSampler):
+                self._data_loader.sampler.set_epoch(epoch)
+            epoch += 1
             data_iter = iter(self._data_loader)
             while True:
                 if self._num_batches is not None and num_items >= self._num_batches:

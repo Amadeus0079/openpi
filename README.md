@@ -1,5 +1,9 @@
 # openpi
 
+The local `feat/ascend` branch provides Pi0.5 training on Ascend CANN 9.0 with a uv-managed `.venv`. Follow [the Ascend setup and training guide](docs/ascend.md) for this branch.
+
+`feat/ascend4yam` adds [YAM MCAP conversion and eight-NPU FSDP full fine-tuning](examples/yam/README.md), with local data under `data/yam/pour_water`.
+
 openpi holds open-source models and packages for robotics, published by the [Physical Intelligence team](https://www.physicalintelligence.company/).
 
 Currently, this repo contains three types of models:

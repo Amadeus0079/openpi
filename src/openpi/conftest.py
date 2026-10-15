@@ -1,10 +1,14 @@
 import os
 
-import pynvml
 import pytest
 
 
 def set_jax_cpu_backend_if_no_gpu() -> None:
+    try:
+        import pynvml  # noqa: PLC0415 -- NVIDIA support is optional on Ascend
+    except ImportError:
+        os.environ.setdefault("JAX_PLATFORMS", "cpu")
+        return
     try:
         pynvml.nvmlInit()
         pynvml.nvmlShutdown()

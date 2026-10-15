@@ -37,6 +37,8 @@ import safetensors.torch
 import torch
 import torch.distributed as dist
 import torch.nn.parallel
+import torch_npu  # noqa: F401 -- registers the Ascend backend
+from torch_npu.contrib import transfer_to_npu  # noqa: F401 -- applies CUDA-to-NPU compatibility patches
 import tqdm
 import wandb
 

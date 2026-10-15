@@ -3,7 +3,7 @@ name = "openpi"
 version = "0.1.0"
 description = "Physical Intelligence open source repo"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 license = { file = "LICENSE" }
 dependencies = [
     "augmax>=0.3.4",
@@ -15,7 +15,7 @@ dependencies = [
     "fsspec[gcs]>=2024.6.0",
     "gym-aloha>=0.1.1",
     "imageio>=2.36.1",
-    "jax[cuda12]==0.5.3",
+    "jax==0.5.3",
     "jaxtyping==0.2.36",
     "lerobot",
     "ml_collections==1.0.0",
@@ -26,7 +26,18 @@ dependencies = [
     "orbax-checkpoint==0.11.13",
     "pillow>=11.0.0",
     "sentencepiece>=0.2.0",
-    "torch==2.7.1",
+    "torch==2.7.1+cpu",
+    "torchvision==0.22.1+cpu",
+    "torch-npu==2.7.1.post4",
+    "torchcodec==0.4.0",
+    # torch_npu's wheel only declares torch; these are runtime imports.
+    "attrs",
+    "cloudpickle",
+    "decorator",
+    "psutil",
+    "pyyaml",
+    "scipy",
+    "tornado",
     "tqdm-loggable>=0.2",
     "typing-extensions>=4.12.2",
     "tyro>=0.9.5",
@@ -61,14 +72,33 @@ rlds = [
     "tensorflow-cpu==2.15.0",
     "tensorflow-datasets==4.9.9",
 ]
+yam = [
+    "mcap>=1.2,<2",
+]
 
 [tool.uv]
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+link-mode = "copy"
+index-strategy = "first-index"
 override-dependencies = ["ml-dtypes==0.4.1", "tensorstore==0.1.74"]
 
 [tool.uv.sources]
 openpi-client = { workspace = true }
 lerobot = { git = "https://github.com/huggingface/lerobot", rev = "0cf864870cf29f4738d3ade893e6fd13fbd7cdb5" }
 dlimp = { git = "https://github.com/kvablack/dlimp", rev = "ad72ce3a9b414db2185bc0b38461d4101a65477a" }
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }
+torchcodec = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+default = true
 
 [tool.uv.workspace]
 members = ["packages/*"]

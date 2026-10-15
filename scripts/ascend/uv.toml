@@ -1,0 +1,13 @@
+# Use only these indexes rather than inheriting per-user mirror lists.
+index-strategy = "first-index"
+link-mode = "copy"
+
+[[index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[[index]]
+name = "pypi"
+url = "https://pypi.org/simple"
+default = true
