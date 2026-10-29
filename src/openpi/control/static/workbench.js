@@ -128,6 +128,7 @@ async function post(action, payload = {}) {
 }
 function options(element, items, selected) {
   // Keep native menus mounted while state polling updates camera/daemon status.
+  if (document.activeElement === element && element.options.length) return;
   const changed =
     element.options.length !== items.length ||
     items.some(
@@ -365,7 +366,15 @@ async function pollState() {
         String(s.sample_index),
       );
     }
-    if (!paramsDirty) cfgKeys.forEach((k) => ($(k).value = s.settings[k]));
+    if (!paramsDirty)
+      cfgKeys.forEach((k) => {
+        const element = $(k);
+        if (
+          document.activeElement !== element &&
+          element.value !== String(s.settings[k])
+        )
+          element.value = s.settings[k];
+      });
     let srv = s.server;
     $("serverStatus").textContent =
       srv.phase === "ready" ? `已加载 · PID ${srv.pid}` : srv.message;
@@ -490,7 +499,10 @@ $("policy").onclick = () =>
 function renderLive(s) {
   let live = s.live || {},
     isLive = s.input_mode === "live";
-  if ($("input_mode").value !== s.input_mode)
+  if (
+    document.activeElement !== $("input_mode") &&
+    $("input_mode").value !== s.input_mode
+  )
     $("input_mode").value = s.input_mode;
   $("savedInput").classList.toggle("hidden", isLive);
   $("liveInput").classList.toggle("hidden", !isLive);
