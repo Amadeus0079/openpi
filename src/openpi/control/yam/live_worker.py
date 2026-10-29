@@ -21,7 +21,7 @@ from PIL import Image
 from openpi.control.yam.execution import CommandWriter
 from openpi.control.yam.execution import daemon_status
 from openpi.control.yam.execution import model_step_period
-from openpi.control.yam.mapping import Yam1ActionAdapter
+from openpi.control.yam.live_kinematics import LiveActionAdapter
 from openpi.control.yam.references import RecordedStart
 from openpi.control.yam.references import sha
 from openpi.control.yam.references import slow_ramp
@@ -71,7 +71,7 @@ class LiveEngine:
 
     def configure(self, checkpoint):
         checkpoint = Path(checkpoint).resolve()
-        adapter = Yam1ActionAdapter(checkpoint, self.args.output / "numerical-models")
+        adapter = LiveActionAdapter(checkpoint, self.args.output / "numerical-models")
         references = support_references(checkpoint, self.args.recordings)
         reference = RecordedStart(references[0], adapter.calibration.camera_serials, self.messages)
         with self.lock:
@@ -315,6 +315,7 @@ class LiveEngine:
 
     def infer(self, payload, *, motion):
         settings = payload["settings"]
+        self.adapter.set_tolerances(settings["position_tolerance_mm"] / 1000, settings["rotation_tolerance_rad"])
         if motion and not (self.aligned or self.skipped):
             raise ValueError("Confirm scene overlay or explicitly choose current-pose start")
         self.guard()
@@ -410,6 +411,7 @@ class LiveEngine:
                         "ik_passed": True,
                         "camera_skew_s": bundle.skew_s,
                         "server_timing": timing,
+                        "ik_diagnostics": plan.get("ik"),
                     }
                 )
                 if writer:

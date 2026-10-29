@@ -52,14 +52,28 @@ class Console:
             memory_fraction=args.memory_fraction,
             model_lock=args.model_lock,
         )
-        self.settings = {"horizon": 30, "execute_steps": 15, "max_chunks": 1, "control_hz": 30, "velocity_mode": "urdf"}
+        self.settings = {
+            "horizon": 30,
+            "execute_steps": 15,
+            "max_chunks": 1,
+            "control_hz": 30,
+            "velocity_mode": "urdf",
+            "position_tolerance_mm": 0.1,
+            "rotation_tolerance_rad": 0.0001,
+        }
         self.live = None
         self.input_mode = getattr(args, "input_mode", None) or (
             "live" if getattr(args, "live_profile", None) else "saved"
         )
         self.mode_settings = {
             "saved": self.settings.copy(),
-            "live": dict(self.settings, max_chunks=120, velocity_mode="collection"),
+            "live": dict(
+                self.settings,
+                max_chunks=120,
+                velocity_mode="collection",
+                position_tolerance_mm=5.0,
+                rotation_tolerance_rad=0.01,
+            ),
         }
         self.settings = self.mode_settings[self.input_mode].copy()
         self.settings_revision = 0
@@ -193,10 +207,20 @@ class Console:
         rates = CONTROL_RATES if mode == "live" else (30,)
         if not 1 <= values["max_chunks"] <= maximum or values["control_hz"] not in rates:
             raise ValueError("推理参数超出当前输入模式的次数/频率范围")
+        position = payload.get("position_tolerance_mm", 5.0 if mode == "live" else 0.1)
+        rotation = payload.get("rotation_tolerance_rad", 0.01 if mode == "live" else 0.0001)
+        if (
+            type(position) not in (int, float)
+            or type(rotation) not in (int, float)
+            or not (0.1 <= position <= 5.0 and 0.0001 <= rotation <= 0.01)
+        ):
+            raise ValueError("IK 残差阈值超出已批准范围：位置 0.1–5mm，旋转 0.0001–0.01rad")
+        if mode != "live":
+            position, rotation = 0.1, 0.0001
         mode = payload.get("velocity_mode", "urdf")
         if mode not in {"urdf", "collection"}:
             raise ValueError("Unknown velocity mode")
-        return dict(values, velocity_mode=mode)
+        return dict(values, velocity_mode=mode, position_tolerance_mm=position, rotation_tolerance_rad=rotation)
 
     def act(self, action, payload):
         self.viewer_seen(payload.get("viewer", ""))

@@ -44,6 +44,8 @@ const decisions = new Map(),
     "max_chunks",
     "control_hz",
     "velocity_mode",
+    "position_tolerance_mm",
+    "rotation_tolerance_rad",
   ];
 function releaseViewer() {
   if (exited) return;
@@ -86,7 +88,11 @@ function valid(c) {
       ? [1, 2, 5, 15, 30, 60, 90, 120]
       : [30]
     ).includes(c.control_hz) &&
-    ["urdf", "collection"].includes(c.velocity_mode)
+    ["urdf", "collection"].includes(c.velocity_mode) &&
+    c.position_tolerance_mm >= 0.1 &&
+    c.position_tolerance_mm <= 5 &&
+    c.rotation_tolerance_rad >= 0.0001 &&
+    c.rotation_tolerance_rad <= 0.01
   );
 }
 function summary() {
@@ -176,6 +182,8 @@ function updateButtons() {
     "execute_steps",
     "max_chunks",
     "velocity_mode",
+    "position_tolerance_mm",
+    "rotation_tolerance_rad",
     "applyTask",
     "applyEpisode",
     "resetConfig",
@@ -184,6 +192,8 @@ function updateButtons() {
     $(id).disabled = busy;
   $("applyConfig").disabled = busy || !valid(config());
   $("control_hz").disabled = busy || state.input_mode !== "live";
+  for (let id of ["position_tolerance_mm", "rotation_tolerance_rad"])
+    $(id).disabled = busy || state.input_mode !== "live";
   let loaded = state.server?.selected_match;
   $("startServer").disabled =
     busy || selectionDirty || !state.policy_ready || loaded;
@@ -300,6 +310,8 @@ $("resetConfig").onclick = () => {
     max_chunks: state?.input_mode === "live" ? 120 : 1,
     control_hz: 30,
     velocity_mode: state?.input_mode === "live" ? "collection" : "urdf",
+    position_tolerance_mm: state?.input_mode === "live" ? 5 : 0.1,
+    rotation_tolerance_rad: state?.input_mode === "live" ? 0.01 : 0.0001,
   };
   cfgKeys.forEach((k) => ($(k).value = c[k]));
   paramsDirty = true;

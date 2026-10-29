@@ -17,6 +17,8 @@ from openpi.control.yam.execution import CommandWriter
 from openpi.control.yam.execution import model_step_period
 from openpi.control.yam.execution import resample_commands
 from openpi.control.yam.execution import wire_rate
+from openpi.control.yam.live_kinematics import LiveKinematics
+from openpi.control.yam.mapping import IKFailure
 from openpi.control.yam.references import RecordedStart
 from openpi.control.yam.references import slow_ramp
 from openpi.control.yam.references import support_references
@@ -164,6 +166,7 @@ def test_live_shadow_has_no_command_writer_and_uses_fresh_ik_feedback(tmp_path, 
     engine.emit = lambda kind, **data: events.append((kind, data))
     engine.adapter = SimpleNamespace(
         reset=lambda q: None,
+        set_tolerances=lambda position, rotation: None,
         bridge=SimpleNamespace(contract={}, snapshot_anchors=dict, validate_policy_metadata=lambda metadata: None),
         observation=lambda q, images, prompt: {"state": np.zeros(22)},
         plan=lambda actions, q, steps, **kwargs: seeds.append(q.copy()) or {"command_targets": np.zeros((steps, 14))},
@@ -195,6 +198,8 @@ def test_live_shadow_has_no_command_writer_and_uses_fresh_ik_feedback(tmp_path, 
                 "max_chunks": 120,
                 "control_hz": 30,
                 "velocity_mode": "urdf",
+                "position_tolerance_mm": 5,
+                "rotation_tolerance_rad": 0.01,
             },
         },
         motion=False,
@@ -259,3 +264,31 @@ def test_stale_return_plan_is_rejected_before_writer_construction(tmp_path, monk
     monkeypatch.setattr(live_worker, "CommandWriter", forbidden)
     with pytest.raises(ValueError, match="Feedback/plan changed"):
         engine.prepare({"plan_id": "old"})
+
+
+def test_relaxed_ik_still_optimizes_and_records_explicit_tolerances():
+    kin = LiveKinematics.__new__(LiveKinematics)
+    kin.set_tolerances(0.005, 0.01)
+    with pytest.raises(ValueError, match="approved"):
+        kin.set_tolerances(0.006, 0.01)
+    iterations = []
+    kin.bounds = np.tile([-1, 1], (6, 1))
+    kin.configuration = SimpleNamespace(
+        q=np.zeros(6), update=lambda q: None, integrate_inplace=lambda velocity, dt: iterations.append(dt)
+    )
+    kin.task = SimpleNamespace(set_target=lambda target: None)
+    kin.mink = SimpleNamespace(
+        SE3=SimpleNamespace(from_matrix=lambda target: target), solve_ik=lambda *_args, **_kwargs: np.zeros(6)
+    )
+    kin.limits = []
+    kin.fk = lambda q: np.eye(4)
+    target = np.eye(4)
+    target[0, 3] = 0.001
+    _, report = kin.solve(target, np.zeros(6))
+    assert len(iterations) == 3
+    assert report["iterations"] == 3
+    assert report["position_error_m"] == 0.001
+    assert report["position_tolerance_m"] == 0.005
+    kin.set_tolerances(0.0001, 0.0001)
+    with pytest.raises(IKFailure):
+        kin.solve(target, np.zeros(6), max_iters=3)

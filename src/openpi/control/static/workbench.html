@@ -1018,6 +1018,30 @@
               step="1"
               value="1"
           /></label>
+          <label class="field"
+            >IK 位置残差上限 · mm<input
+              id="position_tolerance_mm"
+              aria-label="IK 位置残差上限 · mm"
+              type="number"
+              min="0.1"
+              max="5"
+              step="0.1"
+              value="5"
+          /></label>
+          <label class="field"
+            >IK 旋转残差上限 · rad<input
+              id="rotation_tolerance_rad"
+              aria-label="IK 旋转残差上限 · rad"
+              type="number"
+              min="0.0001"
+              max="0.01"
+              step="0.0001"
+              value="0.01"
+          /></label>
+          <p class="hint">
+            现场 IK 每个目标至少优化 3
+            轮。放宽末端残差不改变关节限位与速度约束。
+          </p>
           <div class="note" id="configSummary">
             每轮执行 0.50 s · 累计动作 60 s
           </div>
