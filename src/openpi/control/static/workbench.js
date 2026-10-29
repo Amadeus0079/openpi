@@ -81,8 +81,11 @@ function valid(c) {
     c.execute_steps <= c.horizon &&
     c.horizon <= 30 &&
     c.max_chunks >= 1 &&
-    c.max_chunks <= 20 &&
-    c.control_hz === 30 &&
+    c.max_chunks <= (state?.input_mode === "live" ? 1200 : 20) &&
+    (state?.input_mode === "live"
+      ? [1, 2, 5, 15, 30, 60, 90, 120]
+      : [30]
+    ).includes(c.control_hz) &&
     ["urdf", "collection"].includes(c.velocity_mode)
   );
 }
@@ -90,7 +93,7 @@ function summary() {
   let c = config();
   $("configSummary").textContent = valid(c)
     ? `每次输出 30 步 · 显示 ${c.horizon} 步 · IK 前 ${c.execute_steps} 步 · 重复 ${c.max_chunks} 次`
-    : "需要 1 ≤ IK 前缀 ≤ horizon ≤ 30；每轮 1–20 次。";
+    : "需要 1 ≤ 执行前缀 ≤ horizon ≤ 30，次数和频率须在当前模式范围内。";
   $("configSummary").classList.toggle("error", !valid(c));
   updateButtons();
 }
@@ -102,7 +105,11 @@ async function post(action, payload = {}) {
           "Content-Type": "application/json",
           "X-Replay-Token": token,
         },
-        body: JSON.stringify({ ...payload, viewer }),
+        body: JSON.stringify({
+          checkpoint_id: state?.selected_id,
+          ...payload,
+          viewer,
+        }),
       }),
       j = await r.json();
     if (!r.ok) throw Error(j.error);
@@ -157,7 +164,10 @@ function refreshChoices(s) {
 function updateButtons() {
   if (!state || exited) return;
   let busy = state.busy,
-    dirty = selectionDirty || paramsDirty;
+    dirty =
+      selectionDirty ||
+      paramsDirty ||
+      (state.input_mode === "live" && referenceDirty);
   for (let id of [
     "task",
     "model",
@@ -173,7 +183,7 @@ function updateButtons() {
   ])
     $(id).disabled = busy;
   $("applyConfig").disabled = busy || !valid(config());
-  $("control_hz").disabled = true;
+  $("control_hz").disabled = busy || state.input_mode !== "live";
   let loaded = state.server?.selected_match;
   $("startServer").disabled =
     busy || selectionDirty || !state.policy_ready || loaded;
@@ -185,6 +195,43 @@ function updateButtons() {
         : "启动 server";
   $("stopServer").disabled = busy || state.server?.phase !== "ready";
   $("shadow").disabled = busy || dirty || !state.replay_ready || !loaded;
+  let live = state.live || {},
+    isLive = state.input_mode === "live";
+  for (let id of [
+    "input_mode",
+    "reference",
+    "applyReference",
+    "skip",
+    "aligned",
+    "plan",
+    "prepare",
+    "connectLive",
+  ])
+    $(id).disabled = busy;
+  $("input_mode").querySelector('option[value="live"]').disabled =
+    !state.capabilities.live_cameras;
+  $("connectLive").disabled = busy || !state.capabilities.live_cameras;
+  $("reference").disabled = busy || !isLive || !live.references?.length;
+  $("applyReference").disabled = $("reference").disabled;
+  $("plan").disabled =
+    busy || dirty || !live.ready || !isLive || live.alignment_skipped;
+  $("aligned").disabled =
+    busy || dirty || !live.ready || !isLive || live.alignment_skipped;
+  $("prepare").disabled =
+    busy ||
+    dirty ||
+    !isLive ||
+    !live.ready ||
+    !live.plan_valid ||
+    !live.aligned ||
+    live.alignment_skipped;
+  $("policy").disabled =
+    busy ||
+    dirty ||
+    !isLive ||
+    !live.ready ||
+    !loaded ||
+    !(live.aligned || live.alignment_skipped);
   $("applyTask").disabled = busy || !$("model").value;
   $("applyEpisode").disabled = busy || !state.samples.length;
   $("applyTask").textContent = selectionDirty ? "应用选择 *" : "应用选择";
@@ -216,6 +263,7 @@ async function applyTask() {
     })
   ) {
     selectionDirty = false;
+    referenceDirty = false;
     await pollState();
   }
 }
@@ -249,9 +297,9 @@ $("resetConfig").onclick = () => {
   let c = {
     horizon: 30,
     execute_steps: 15,
-    max_chunks: 1,
+    max_chunks: state?.input_mode === "live" ? 120 : 1,
     control_hz: 30,
-    velocity_mode: "urdf",
+    velocity_mode: state?.input_mode === "live" ? "collection" : "urdf",
   };
   cfgKeys.forEach((k) => ($(k).value = c[k]));
   paramsDirty = true;
@@ -260,6 +308,11 @@ $("resetConfig").onclick = () => {
 $("toggleSidebar").onclick = () => $("sidebar").classList.toggle("open");
 const phases = {
   preview: "待机",
+  planning: "起点预检中",
+  planned: "预检通过",
+  preparing: "回位中",
+  at_start: "起点就绪",
+  policy: "真机策略运行",
   shadow: "只读推理",
   server_starting: "加载模型",
   server_ready: "模型就绪",
@@ -318,10 +371,16 @@ async function pollState() {
       (s.checkpoint_step != null
         ? " · step " + s.checkpoint_step.toLocaleString()
         : "");
+    renderLive(s);
     $("sampleInfo").textContent = s.sample
       ? `${s.sample.task} · 保存帧 ${s.sample.index} · target support`
       : "该 checkpoint 没有此后端可用的保存回放。";
-    let key = s.selected_id + ":" + s.sample_index;
+    let key =
+      s.input_mode +
+      ":" +
+      s.selected_id +
+      ":" +
+      (s.input_mode === "live" ? s.live?.reference?.sha256 : s.sample_index);
     if (refKey !== key) {
       refKey = key;
       for (let n of names)
@@ -331,24 +390,149 @@ async function pollState() {
     $("horizonStat").textContent = c.horizon;
     $("horizonTime").textContent = `步 · ${(c.horizon / 30).toFixed(2)} s`;
     $("executeStat").textContent = c.execute_steps;
-    $("executeTime").textContent = "步 · 离线 IK";
-    $("hzStat").textContent = 30;
+    $("executeTime").textContent =
+      s.input_mode === "live" ? "步 · 现场 IK" : "步 · 离线 IK";
+    $("hzStat").textContent = c.control_hz;
     document
       .querySelectorAll(".age")
-      .forEach((x) => (x.textContent = s.sample ? "保存帧" : "无输入"));
+      .forEach(
+        (x) =>
+          (x.textContent =
+            s.input_mode === "live"
+              ? s.live?.camera_age_s != null
+                ? Math.round(s.live.camera_age_s * 1000) + " ms"
+                : "等待现场画面"
+              : s.sample
+                ? "保存帧"
+                : "无输入"),
+      );
     $("progress").textContent = s.busy
-      ? `运行中 · 已完成 ${s.completed_chunks} / ${c.max_chunks} 次 · 无运动指令`
-      : `待机 · 上轮完成 ${s.completed_chunks} 次 · 下轮 ${c.max_chunks} 次 · 无运动指令`;
+      ? `运行中 · 已完成 ${s.completed_chunks} / ${c.max_chunks} 次 · ${s.hardware_motion ? "正在发送运动" : "未发送运动"}`
+      : `待机 · 上轮完成 ${s.completed_chunks} 次 · 下轮 ${c.max_chunks} 次 · ${s.hardware_motion ? "正在发送运动" : "未发送运动"}`;
     $("logpath").textContent = s.policy_output || "日志将在推理后生成";
     updateButtons();
   } catch (e) {
     $("connection").textContent = "连接中断";
     $("connection").classList.add("error");
     $("shadow").disabled = true;
+    $("policy").disabled = true;
+    $("prepare").disabled = true;
     $("message").textContent = e.message;
   }
 }
 
+let referenceKey = "",
+  referenceDirty = false;
+function overlay() {
+  let live = state?.input_mode === "live",
+    skip = $("skip").checked,
+    opacity = Number($("opacity").value) / 100;
+  $("opacityLabel").textContent = Math.round(opacity * 100) + "%";
+  $("alignment").classList.toggle("hidden", skip);
+  for (let n of names) {
+    $("ref-" + n).style.opacity = live && !skip ? opacity : 0;
+    $("ref-" + n).style.display = live && !skip ? "block" : "none";
+  }
+}
+$("opacity").oninput = overlay;
+$("input_mode").onchange = async () => {
+  if (await post("input_mode", { mode: $("input_mode").value })) {
+    paramsDirty = false;
+    selectionDirty = false;
+    referenceDirty = false;
+    referenceDirty = false;
+    await pollState();
+    summary();
+  }
+};
+$("connectLive").onclick = () => post("connect_live");
+$("reference").onchange = () => {
+  referenceDirty = true;
+  updateButtons();
+};
+$("applyReference").onclick = async () => {
+  if (await post("reference", { index: Number($("reference").value) })) {
+    referenceDirty = false;
+    await pollState();
+  }
+};
+$("skip").onchange = () => {
+  overlay();
+  post("skip_alignment", { skip: $("skip").checked });
+};
+$("aligned").onchange = () => post("align", { aligned: $("aligned").checked });
+$("plan").onclick = () => post("plan");
+$("prepare").onclick = () =>
+  post("prepare", { plan_id: state?.live?.plan?.plan_id });
+$("policy").onclick = () =>
+  post("policy", { settings_revision: state.settings_revision });
+function renderLive(s) {
+  let live = s.live || {},
+    isLive = s.input_mode === "live";
+  $("input_mode").value = s.input_mode;
+  $("savedInput").classList.toggle("hidden", isLive);
+  $("liveInput").classList.toggle("hidden", !isLive);
+  $("connectLive").classList.toggle("hidden", !isLive);
+  $("policy").classList.toggle("hidden", !isLive);
+  $("inputDescription").textContent = isLive
+    ? "现场观测 · 闭环策略"
+    : "保存回放 · 只读推理";
+  $("inputBadge").textContent = isLive ? "现场实时观测" : "保存回放";
+  $("liveStatus").textContent = isLive
+    ? live.error ||
+      (!live.ready
+        ? "正在连接现场观测…"
+        : `三相机新鲜 · 同步偏差 ${Math.round((live.camera_skew_s || 0) * 1000)} ms · daemon ${live.daemon?.state || "unknown"}`)
+    : "";
+  $("liveStatus").classList.toggle("error", !!live.error);
+  if (!referenceDirty)
+    options(
+      $("reference"),
+      (live.references || []).map((x, i) => ({
+        value: String(i),
+        label: x.task + " · " + x.original_id,
+      })),
+      String(live.reference_index ?? 0),
+    );
+  $("skip").checked = !!live.alignment_skipped;
+  $("aligned").checked = !!live.aligned;
+  $("planInfo").textContent = live.plan
+    ? live.plan_valid
+      ? `预检通过 · 预计 ${live.plan.execution_duration_s.toFixed(2)} 秒；回位需要单独点击。`
+      : "预检已过期或反馈变化，请重新预检。"
+    : "叠加训练示范首帧；回位目标使用原始实测关节。";
+  let key = s.selected_id + ":" + (live.reference?.sha256 || "");
+  if (key !== referenceKey) {
+    referenceKey = key;
+    for (let n of names)
+      $("ref-" + n).src = "/reference/" + n + "?v=" + encodeURIComponent(key);
+  }
+  $("max_chunks").max = isLive ? "1200" : "20";
+  document
+    .querySelectorAll(".camerafoot>span:first-child")
+    .forEach(
+      (x) => (x.textContent = isLive ? "现场 / 训练示范叠图" : "保存回放输入"),
+    );
+  overlay();
+}
+for (let n of names) {
+  const image = $("live-" + n);
+  const update = () => {
+    if (exited) return;
+    setTimeout(() => {
+      if (!exited && state?.input_mode === "live")
+        image.src = "/camera/" + n + "?t=" + Date.now();
+    }, 150);
+  };
+  image.onload = update;
+  image.onerror = () => {
+    if (!exited)
+      setTimeout(() => {
+        if (!exited && state?.input_mode === "live")
+          image.src = "/camera/" + n + "?t=" + Date.now();
+      }, 800);
+  };
+}
 function ingest(rows) {
   for (let e of rows) {
     if (e.kind === "start") hardwareMotion = e.hardware_motion;

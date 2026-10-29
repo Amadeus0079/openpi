@@ -34,6 +34,10 @@ class ViewerLeases:
             self.viewers = {k: v for k, v in self.viewers.items() if now - v <= self.timeout}
             return not self.viewers
 
+    def recent(self, seconds=3):
+        with self.lock:
+            return any(time.monotonic() - value < seconds for value in self.viewers.values())
+
 
 class ModelServer:
     def __init__(self, directory, *, config, device, memory_fraction, model_lock=None):

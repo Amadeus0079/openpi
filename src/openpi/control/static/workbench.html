@@ -878,7 +878,7 @@
     <header class="top">
       <div class="brand"><b>OpenPI</b><span>推理工作台</span></div>
       <div class="topright">
-        <span class="hint">保存回放 · 只读推理</span
+        <span class="hint" id="inputDescription">观测与策略</span
         ><span class="badge" id="connection"><i class="dot"></i>连接中</span
         ><button class="mobile-toggle" id="toggleSidebar">设置</button
         ><button id="exitWorkbench">退出</button>
@@ -914,14 +914,57 @@
           <span id="modelReady" class="hint">读取文件状态…</span>
         </section>
         <section class="section">
-          <h3><span class="step">02</span>回放输入</h3>
+          <h3><span class="step">02</span>观测与示范对齐</h3>
           <label class="field"
-            >目标支持示例<select id="episode" aria-label="目标支持示例"></select
-          ></label>
-          <button id="applyEpisode" class="full">应用示例</button>
-          <p class="hint" id="sampleInfo">请选择已发布 checkpoint。</p>
-          <div class="note">
-            三视角来自保存的目标支持帧。每次推理独立 reset，不发送机械臂指令。
+            >输入来源<select id="input_mode" aria-label="输入来源">
+              <option value="live">现场实时观测</option>
+              <option value="saved">保存支持回放</option>
+            </select></label
+          >
+          <button id="connectLive" class="full">重连现场相机</button>
+          <p id="liveStatus" class="hint"></p>
+          <div id="savedInput">
+            <label class="field"
+              >目标支持示例<select
+                id="episode"
+                aria-label="目标支持示例"
+              ></select></label
+            ><button id="applyEpisode" class="full">应用示例</button>
+            <p class="hint" id="sampleInfo"></p>
+          </div>
+          <div id="liveInput" class="section">
+            <label class="field"
+              >训练示范<select
+                id="reference"
+                aria-label="训练示范"
+              ></select></label
+            ><button id="applyReference" class="full">加载示范</button>
+            <label class="check"
+              ><input
+                id="skip"
+                type="checkbox"
+              />跳过对齐，从当前姿态开始</label
+            >
+            <div id="alignment">
+              <label class="field"
+                >参考不透明度<input
+                  id="opacity"
+                  aria-label="参考不透明度"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value="50" /></label
+              ><span id="opacityLabel" class="hint">50%</span>
+              <button id="plan" class="full">只读预检起点</button>
+              <p id="planInfo" class="hint"></p>
+              <label class="check"
+                ><input
+                  id="aligned"
+                  type="checkbox"
+                />我已核对三视角与场景布局</label
+              >
+              <button id="prepare" class="full" disabled>慢速到示范起点</button>
+            </div>
           </div>
         </section>
         <section class="section">
@@ -948,8 +991,18 @@
               step="1"
               value="15" /></label
           ><label class="field"
-            >模型时间基准<select id="control_hz" disabled>
+            >动作目标更新频率<select
+              id="control_hz"
+              aria-label="动作目标更新频率"
+            >
+              <option value="1">1 Hz</option>
+              <option value="2">2 Hz</option>
+              <option value="5">5 Hz</option>
+              <option value="15">15 Hz</option>
               <option value="30">30 Hz</option>
+              <option value="60">60 Hz</option>
+              <option value="90">90 Hz</option>
+              <option value="120">120 Hz</option>
             </select></label
           ><label class="field"
             >IK 速度约束<select id="velocity_mode" aria-label="IK 速度约束">
@@ -957,11 +1010,11 @@
               <option value="collection">本机采集控制器限制</option>
             </select></label
           ><label class="field"
-            >每轮推理次数<input
+            >最长策略决策轮数<input
               id="max_chunks"
               type="number"
               min="1"
-              max="20"
+              max="1200"
               step="1"
               value="1"
           /></label>
@@ -989,14 +1042,15 @@
           </div>
           <div class="buttons">
             <button id="shadow" disabled>只读推理</button
-            ><button class="stop" id="stop">■ 取消本轮</button>
+            ><button class="primary" id="policy" disabled>开始真机推理</button
+            ><button class="stop" id="stop">■ 停止并保持</button>
           </div>
         </div>
         <div class="status">
           <span class="badge dark" id="phase">待机</span
           ><span class="badge" id="serverBadge">Server 未启动</span
           ><span class="message" id="message">正在读取 OpenPI 状态…</span
-          ><span class="badge">保存回放</span>
+          ><span class="badge" id="inputBadge">输入模式</span>
         </div>
         <div class="camera-zone">
           <div class="cameras">
@@ -1005,7 +1059,13 @@
                 <h3>左腕视角</h3>
                 <span class="badge">LEFT</span>
               </div>
-              <div class="image"><img id="live-left" alt="左腕保存帧" /></div>
+              <div class="image">
+                <img id="live-left" alt="左腕观测" /><img
+                  class="ref"
+                  id="ref-left"
+                  alt="训练示范首帧"
+                />
+              </div>
               <div class="camerafoot">
                 <span>保存回放输入</span><span class="age">—</span>
               </div>
@@ -1015,7 +1075,13 @@
                 <h3>主视角</h3>
                 <span class="badge">MAIN</span>
               </div>
-              <div class="image"><img id="live-main" alt="主视角保存帧" /></div>
+              <div class="image">
+                <img id="live-main" alt="主视角观测" /><img
+                  class="ref"
+                  id="ref-main"
+                  alt="训练示范首帧"
+                />
+              </div>
               <div class="camerafoot">
                 <span>保存回放输入</span><span class="age">—</span>
               </div>
@@ -1025,7 +1091,13 @@
                 <h3>右腕视角</h3>
                 <span class="badge">RIGHT</span>
               </div>
-              <div class="image"><img id="live-right" alt="右腕保存帧" /></div>
+              <div class="image">
+                <img id="live-right" alt="右腕观测" /><img
+                  class="ref"
+                  id="ref-right"
+                  alt="训练示范首帧"
+                />
+              </div>
               <div class="camerafoot">
                 <span>保存回放输入</span><span class="age">—</span>
               </div>
@@ -1109,8 +1181,8 @@
                 </div>
               </div>
               <div class="chartbar">
-                <span><i class="keyline"></i>IK 计划 离线求解</span
-                ><span id="ackInfo">等待离线 IK 结果</span>
+                <span><i class="keyline"></i>IK 计划 ACK / 实测（运动时）</span
+                ><span id="ackInfo">等待 IK 结果</span>
               </div>
               <div class="chartbox">
                 <canvas id="jointChart"></canvas>

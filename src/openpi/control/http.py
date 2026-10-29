@@ -63,7 +63,10 @@ def make_server(app):
                     self.reply(200, app.telemetry_snapshot(int(query.get("after", [0])[0]), query.get("run", [""])[0]))
                 elif parsed.path.startswith("/camera/"):
                     with app.lock:
-                        data = app.frames.get(parsed.path.split("/")[-1])
+                        data = app.camera_frame(parsed.path.split("/")[-1])
+                    self.reply(200 if data else 404, data or b"", "image/jpeg")
+                elif parsed.path.startswith("/reference/"):
+                    data = app.reference_frame(parsed.path.split("/")[-1])
                     self.reply(200 if data else 404, data or b"", "image/jpeg")
                 else:
                     self.reply(404, {"error": "Not found"})

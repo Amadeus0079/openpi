@@ -4,9 +4,10 @@
 或安装项目后的 `openpi-control`。无需 Node 服务或前端构建。原 YAM-2 工作台的三视角布局、
 EE 动作曲线和关节计划曲线已迁入 `src/openpi/control/static/`；任务和模型不再使用机器上的日期部署目录。
 
-当前内置后端为 **YAM-1 保存支持回放**：实际模型推理、双 base / 原生 mount 映射和离线 IK。
-页面明确显示保存帧；没有实时相机、daemon、CAN、归零或运动发送入口。
-原 YAM-2 现场控制服务不受本次安装影响，不能将此后端的回放验收解释为真机控制验收。
+内置 YAM-1 现场模式与保存支持回放两种输入。现场模式包含三路实时相机、训练示范首帧叠图、
+只读起点预检、慢速到示范起点和真机策略推理；保存回放用于不连接硬件的离线诊断。
+现场接口复用已运行的本机 protocol-6 daemon，不启动、重启或归零 daemon。
+安装后的功能可用性与测试范围分别记录；只读验收不代表运动或倒水成功率验收。
 
 ## 启动与选择权重
 
@@ -61,7 +62,7 @@ python scripts/control_console.py \
 - `--support-poses`：经确认的目标支持姿态 JSON，格式为 `frames` 列表，每帧含 `task` 和
   `joint_configuration.left_joint1…6/right_joint1…6`。当前关节由保存的 EE state 做离线 IK 重建，
   不是实时关节反馈。未提供时只做原生 mount 坐标映射，不伪造关节计划。
-- `--yam-owner`：仅当用户选择“本机采集控制器限制”时，通过 AST 只读解析该机的速度规则；不导入或启动控制器。
+- `--yam-owner`：校验现有 daemon 的代码归属，并通过 AST 只读解析本机采集速度规则；不启动控制器。
 - `--model-lock`：与其他离线验收器共用的 GPU 排他锁。模型加载和整个存活期间持锁，退出后释放。
 - `--memory-fraction`：默认限制单模型 CUDA 分配为显存的 52%；不关闭其他用户的 GPU 进程。
 
@@ -75,6 +76,42 @@ python scripts/control_console.py \
 新版 YAM-1 资产同时接入标准 `create_trained_policy`，所以 `scripts/serve_policy.py` 也能加载，
 包括训练 Gemma 快照、SHA 绑定的 v3 标定和 domain-I/O 模型的 `yam1` 头路由。
 组别和训练步数从清单读取，不把 M0–M3 或 4000 固定为选择列表。
+
+## 实时叠图、回位与策略
+
+在上述命令后追加本机参数即可启用现场模式（默认输入随之变为现场）：
+
+```bash
+  --live-profile /path/to/.config/yam/profiles/default.yaml \
+  --client-root /path/to/YAM/gello_software \
+  --recordings-root /path/to/TeleopData \
+  --live-python /path/to/camera-mink-environment/bin/python
+```
+
+`--live-python` 使用独立 NumPy 2 环境，需本机相机 SDK、pyrealsense2、pyzmq、PyYAML、MCAP/PyAV、
+msgpack、websockets、Pillow、SciPy、MuJoCo/Mink。模型服务仍使用 OpenPI 环境。
+profile 指定回环 RPC、左右臂和三相机；相机序列号、尺寸和旋转与 checkpoint 内 YAM-1 标定核对。
+所有预览和策略观测共享同一个 CameraRig，避免重复占用设备。
+
+1. 在“观测与示范对齐”选择现场输入和训练示范，点击“加载示范”。参考仅来自当前 checkpoint
+   的 `target_support`，按原始 MCAP SHA 校验；不会自动读取开发集或保留测试集。
+2. 调整参考不透明度，核对三视角与物体布局。叠图来自原始首帧；回位目标来自同一示范的首条
+   实测原生关节反馈，不使用由 EE 做 IK 重建的近似位置。
+3. 点击“只读预检起点”检查当前反馈、daemon 限位和慢速关节衔接，显示预计耗时，不发送命令。
+   确认场景后，“慢速到示范起点”才可用；该按钮会实际运动，臂关节目标速度不超过 0.15 rad/s。
+   回位按已有标定 daemon 的原生关节限位校验；策略 IK 另保留 URDF 名义限位。
+4. 启动所选 server 后，“只读推理”使用真实相机和关节、固定本轮锚点、输出 action 与 IK，
+   全程不创建运动会话。现场只读单次决策用于诊断。
+5. “开始真机推理”会实际运动。需先确认叠图场景，或明确勾选“跳过对齐，从当前姿态开始”。
+   每轮从新鲜观测推理，执行所选前缀，记录实际 ACK 与关节反馈。最多 1200 轮，可随时停止。
+
+模型固定输出 30×14；30 Hz 模型时间不变。目标更新频率支持 1/2/5/15/30/60/90/120 Hz：
+低于 30 时延长各模型目标的保持时间，高于 30 时按原时间插值。RPC 指令流始终至少 30 Hz，
+等待推理/IK 时重复最后已确认目标；不把未知 ACK 的命令重发。运动结束和异常退出都请求并确认 SAFE_HOLD。
+回位计划 60 秒失效，反馈变化超过 0.02 rad 需重新预检。相机超过 1 秒或页面心跳超过 3 秒即中止运动。
+停止按钮是软件停止并保持入口，不能替代硬件急停。
+
+FK/IK 为数值模型，不包含碰撞检测。操作前需由现场人员核对空间与场景；功能恢复不等于现场运动验收。
 
 ## 连接与退出
 
@@ -97,4 +134,6 @@ node --check src/openpi/control/static/workbench.js
 
 这组测试覆盖目录分层、数字排序、软链循环、临时和不完整发布过滤、动态增加/删除、
 选择失效、HTTP 会话与不可用操作、参数范围、模型锁取消及已退出子进程保护。
-真实权重、CUDA 和离线 IK 需要另在目标机器通过页面验证。
+实时路径另覆盖原始首关节/SHA绑定、仅使用支持集、八档时基、慢速回位限位、
+只读路径不构造 CommandWriter、推理后重新读取 IK 种子、相机/页面过期及未知 ACK 不重发并保持。
+真实权重、CUDA、相机和 IK 需要另在目标机器通过页面验证；运动测试需现场授权。
