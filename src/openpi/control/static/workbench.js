@@ -127,8 +127,18 @@ async function post(action, payload = {}) {
   }
 }
 function options(element, items, selected) {
-  element.replaceChildren(...items.map((x) => new Option(x.label, x.value)));
-  if (items.some((x) => x.value === selected)) element.value = selected;
+  // Keep native menus mounted while state polling updates camera/daemon status.
+  const changed =
+    element.options.length !== items.length ||
+    items.some(
+      (item, index) =>
+        element.options[index].value !== item.value ||
+        element.options[index].text !== item.label,
+    );
+  if (changed)
+    element.replaceChildren(...items.map((x) => new Option(x.label, x.value)));
+  if (element.value !== selected && items.some((x) => x.value === selected))
+    element.value = selected;
 }
 function renderSteps(selected) {
   let task = state?.inventory.tasks.find((x) => x.id === $("task").value);
@@ -452,7 +462,6 @@ $("input_mode").onchange = async () => {
     paramsDirty = false;
     selectionDirty = false;
     referenceDirty = false;
-    referenceDirty = false;
     await pollState();
     summary();
   }
@@ -481,7 +490,8 @@ $("policy").onclick = () =>
 function renderLive(s) {
   let live = s.live || {},
     isLive = s.input_mode === "live";
-  $("input_mode").value = s.input_mode;
+  if ($("input_mode").value !== s.input_mode)
+    $("input_mode").value = s.input_mode;
   $("savedInput").classList.toggle("hidden", isLive);
   $("liveInput").classList.toggle("hidden", !isLive);
   $("connectLive").classList.toggle("hidden", !isLive);
