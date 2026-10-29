@@ -1,0 +1,1140 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>OpenPI / 推理控制台</title>
+    <meta name="openpi-token" content="TOKEN_VALUE" />
+    <meta name="openpi-viewer" content="CLIENT_VALUE" />
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #0a0a0a;
+        --muted: #737373;
+        --line: #e5e5e5;
+        --canvas: #f5f5f5;
+        --side: #fafafa;
+        --top: 42px;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+      }
+      body {
+        background: var(--canvas);
+        color: var(--ink);
+        font:
+          13px/1.4 Inter,
+          Geist,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          sans-serif;
+        font-feature-settings: "ss01", "cv11";
+      }
+      button,
+      input,
+      select {
+        font: inherit;
+        color: inherit;
+      }
+      button {
+        border: 1px solid var(--line);
+        background: white;
+        border-radius: 18px;
+        padding: 6px 12px;
+        cursor: pointer;
+        min-height: 30px;
+        font-weight: 500;
+        white-space: nowrap;
+      }
+      button:hover {
+        background: #eee;
+      }
+      button:disabled {
+        opacity: 0.38;
+        cursor: not-allowed;
+      }
+      button.primary {
+        background: #171717;
+        color: #fafafa;
+        border-color: #171717;
+      }
+      button.stop {
+        color: #e7000b;
+        border-color: #e7000b;
+        background: white;
+      }
+      input,
+      select {
+        width: 100%;
+        border: 1px solid transparent;
+        background: #f0f0f0;
+        padding: 6px 10px;
+        border-radius: 18px;
+        min-width: 0;
+      }
+      input:focus,
+      select:focus {
+        outline: 1px solid #737373;
+      }
+      input[type="range"] {
+        padding: 0;
+        accent-color: #171717;
+      }
+      input[type="checkbox"] {
+        width: 15px;
+        height: 15px;
+        accent-color: #171717;
+        flex-shrink: 0;
+      }
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+      h1 {
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        white-space: nowrap;
+      }
+      h2 {
+        font-size: 14px;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        white-space: nowrap;
+      }
+      h3 {
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .hint,
+      .muted {
+        color: var(--muted);
+      }
+      .hint {
+        font-size: 11px;
+        line-height: 1.5;
+      }
+      .caps {
+        font-size: 10px;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+      }
+      .badge {
+        border-radius: 18px;
+        padding: 2px 8px;
+        background: #f0f0f0;
+        font-size: 11px;
+        white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+      .badge.dark {
+        background: #171717;
+        color: white;
+      }
+      .dot {
+        height: 6px;
+        width: 6px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+      .top {
+        height: var(--top);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0 16px;
+        background: white;
+        border-bottom: 1px solid var(--line);
+      }
+      .brand {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+      }
+      .brand b {
+        font-size: 18px;
+        letter-spacing: -0.04em;
+      }
+      .brand > span {
+        border-left: 1px solid var(--line);
+        padding-left: 12px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .topright {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: 260px minmax(0, 1fr);
+        height: calc(100dvh - var(--top));
+        min-height: 0;
+        overflow: hidden;
+      }
+      aside {
+        background: var(--side);
+        border-right: 1px solid var(--line);
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable;
+        scrollbar-width: thin;
+      }
+      aside > * {
+        flex-shrink: 0;
+      }
+      .sidebar-title {
+        font-size: 18px;
+        letter-spacing: -0.025em;
+        font-weight: 600;
+      }
+      .section {
+        display: flex;
+        flex-direction: column;
+        gap: 9px;
+      }
+      .section + .section {
+        border-top: 1px solid var(--line);
+        padding-top: 16px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .between {
+        justify-content: space-between;
+      }
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .two {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .full {
+        width: 100%;
+      }
+      .step {
+        font-size: 10px;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 2px 7px;
+        background: white;
+        margin-right: 6px;
+      }
+      .check {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+        font-size: 12px;
+      }
+      .note {
+        padding: 10px;
+        background: #f0f0f0;
+        border-radius: 18px;
+        font-size: 11px;
+        color: #525252;
+      }
+      details summary {
+        cursor: pointer;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      #configSummary {
+        font-variant-numeric: tabular-nums;
+      }
+      main {
+        height: 100%;
+        min-height: 0;
+        min-width: 0;
+        padding: 10px;
+        display: grid;
+        grid-template-rows: 34px 26px minmax(0, 1fr) minmax(0, 1fr) 16px;
+        gap: 8px;
+        overflow: hidden;
+      }
+      .controlbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        min-width: 0;
+        gap: 12px;
+      }
+      .controltitle {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+      }
+      .controltitle p {
+        font-size: 12px;
+        color: var(--muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .buttons {
+        display: flex;
+        gap: 6px;
+        flex-shrink: 0;
+      }
+      .status {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        min-width: 0;
+        font-size: 12px;
+        padding: 0 2px;
+      }
+      .status .message {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .error {
+        color: #e7000b;
+      }
+      .card {
+        background: white;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        box-shadow: 0 1px 3px #00000006;
+        overflow: hidden;
+      }
+      .camera-zone {
+        display: grid;
+        grid-template-rows: minmax(0, 1fr) 28px;
+        gap: 6px;
+        min-height: 0;
+      }
+      .cameras {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 8px;
+        min-height: 0;
+      }
+      .camera {
+        display: grid;
+        grid-template-rows: 28px minmax(0, 1fr) 22px;
+        min-height: 0;
+      }
+      .camerahead {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 10px;
+        border-bottom: 1px solid var(--line);
+      }
+      .camerahead .badge {
+        font-size: 9px;
+        padding: 1px 6px;
+      }
+      .camera .image {
+        position: relative;
+        background: #f5f5f5;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .image img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+      .image .ref {
+        opacity: 0.5;
+      }
+      .camerafoot {
+        padding: 0 10px;
+        color: var(--muted);
+        font-size: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 4px;
+        white-space: nowrap;
+      }
+      .stats {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 0 10px;
+        min-width: 0;
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        background: #fafafa;
+      }
+      .stat {
+        display: flex;
+        align-items: baseline;
+        gap: 5px;
+        min-width: 0;
+        white-space: nowrap;
+      }
+      .stat p {
+        font-size: 10px;
+      }
+      .stat b {
+        font-size: 15px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+      .stat small {
+        font-size: 10px;
+        color: var(--muted);
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .stat + .stat {
+        border-left: 1px solid var(--line);
+        padding-left: 12px;
+      }
+      .action-zone {
+        display: grid;
+        grid-template-rows: 28px minmax(0, 1fr);
+        gap: 6px;
+        min-height: 0;
+      }
+      .timelinebar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        min-width: 0;
+      }
+      .timelinebar .caps {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .charttools {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        flex-shrink: 0;
+      }
+      .charttools button,
+      .charttools select {
+        font-size: 11px;
+        padding: 3px 9px;
+        min-height: 26px;
+        width: auto;
+      }
+      .plots {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 8px;
+        min-height: 0;
+      }
+      .plot {
+        display: grid;
+        grid-template-rows: 42px 22px minmax(0, 1fr) 32px;
+        min-width: 0;
+        min-height: 0;
+      }
+      .charthead {
+        padding: 8px 10px 2px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 6px;
+        min-width: 0;
+      }
+      .charthead p {
+        display: none;
+      }
+      .chartcontrols {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        min-width: 0;
+      }
+      .chartcontrols select {
+        width: auto;
+        max-width: 165px;
+        font-size: 11px;
+        min-height: 26px;
+        padding: 4px 8px;
+      }
+      .chartbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: var(--muted);
+        font-size: 10px;
+        padding: 0 10px;
+        min-width: 0;
+        gap: 8px;
+      }
+      .chartbar > span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .chartbar > span:first-child {
+        flex-shrink: 0;
+      }
+      .chartbar > span:last-child {
+        text-align: right;
+      }
+      .keyline,
+      .keysolid {
+        display: inline-block;
+        width: 14px;
+        border-top: 1px dashed #737373;
+        vertical-align: middle;
+        margin-right: 3px;
+      }
+      .keysolid {
+        border-top: 2px solid #737373;
+      }
+      .chartbox {
+        position: relative;
+        min-height: 0;
+        min-width: 0;
+        margin: 0 6px;
+      }
+      .chartbox canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+      .empty {
+        position: absolute;
+        inset: 12px 35px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        pointer-events: none;
+        color: var(--muted);
+        font-size: 11px;
+        gap: 4px;
+        text-align: center;
+      }
+      .empty span {
+        font-size: 10px;
+      }
+      .legend {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+        padding: 2px 10px 6px;
+        overflow-x: auto;
+        overscroll-behavior: contain;
+        scrollbar-width: thin;
+        min-width: 0;
+      }
+      .legend button {
+        font-size: 11px;
+        padding: 2px 6px;
+        min-height: 23px;
+        background: #fafafa;
+        border-color: transparent;
+        flex-shrink: 0;
+      }
+      .legend button.off {
+        opacity: 0.35;
+        text-decoration: line-through;
+      }
+      .swatch {
+        display: inline-block;
+        width: 13px;
+        border-top: 2px solid;
+        vertical-align: middle;
+        margin-right: 4px;
+      }
+      .footer {
+        display: flex;
+        justify-content: space-between;
+        font-size: 10px;
+        color: var(--muted);
+        gap: 12px;
+        min-width: 0;
+        white-space: nowrap;
+      }
+      .footer span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .footer span:last-child {
+        max-width: 45%;
+      }
+      .hidden {
+        display: none !important;
+      }
+      #tooltip {
+        position: fixed;
+        background: #171717;
+        color: white;
+        padding: 8px 12px;
+        border-radius: 12px;
+        pointer-events: none;
+        z-index: 10;
+        font-size: 11px;
+        white-space: pre;
+        box-shadow: 0 3px 12px #0002;
+        max-width: 360px;
+      }
+      .server-state {
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        font-size: 11px;
+        overflow-wrap: anywhere;
+        background: white;
+      }
+      .server-state.ready {
+        color: #15803d;
+        background: #f0fdf4;
+        border-color: #bbf7d0;
+      }
+      #exitWorkbench {
+        font-size: 11px;
+        min-height: 26px;
+        padding: 3px 9px;
+      }
+      .mobile-toggle {
+        display: none;
+      }
+      @media (max-width: 1250px) {
+        .layout {
+          grid-template-columns: 235px minmax(0, 1fr);
+        }
+        aside {
+          padding: 14px;
+        }
+        .controltitle h1 {
+          display: none;
+        }
+        .stat .caps {
+          display: none;
+        }
+        .charthead {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 3px;
+          padding-top: 6px;
+        }
+        .charthead h2 {
+          font-size: 13px;
+        }
+        .chartcontrols select {
+          font-size: 10px;
+          min-height: 22px;
+          padding: 2px 7px;
+          max-width: 100%;
+        }
+        .plot {
+          grid-template-rows: 56px 30px minmax(0, 1fr) 30px;
+        }
+        .chartbar {
+          flex-direction: column;
+          align-items: flex-start;
+          justify-content: center;
+          gap: 1px;
+        }
+        .chartbar > span {
+          max-width: 100%;
+        }
+        .chartbar > span:last-child {
+          text-align: left;
+        }
+        .stats {
+          gap: 6px;
+        }
+        .stat + .stat {
+          padding-left: 8px;
+        }
+      }
+      @media (max-width: 800px) {
+        .layout {
+          grid-template-columns: minmax(0, 1fr);
+        }
+        aside {
+          display: none;
+          position: fixed;
+          top: var(--top);
+          bottom: 0;
+          left: 0;
+          width: 272px;
+          z-index: 5;
+          box-shadow: 6px 0 24px #0002;
+        }
+        .layout aside.open {
+          display: flex;
+        }
+        .mobile-toggle {
+          display: inline-block;
+          min-height: 26px;
+          padding: 3px 10px;
+        }
+        .top {
+          padding: 0 10px;
+        }
+        .topright .hint {
+          display: none;
+        }
+        .controltitle p {
+          font-size: 11px;
+        }
+        .buttons button {
+          padding: 5px 8px;
+          font-size: 11px;
+          min-height: 28px;
+        }
+        .controlbar {
+          gap: 6px;
+        }
+        .status .badge {
+          font-size: 10px;
+          padding: 2px 6px;
+        }
+        .status .message {
+          font-size: 11px;
+        }
+        .status #alignmentStatus {
+          display: none;
+        }
+        .top .brand > span {
+          display: none;
+        }
+        .topright {
+          gap: 5px;
+        }
+        main {
+          padding: 8px;
+          gap: 6px;
+          grid-template-rows: 30px 24px minmax(0, 1fr) minmax(0, 1fr) 14px;
+        }
+        .camerahead {
+          padding: 0 7px;
+        }
+        .camerahead h3 {
+          font-size: 11px;
+        }
+        .camerahead .badge {
+          display: none;
+        }
+        .camerafoot {
+          font-size: 9px;
+          padding: 0 6px;
+        }
+        .camerafoot > span:first-child {
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .cameras {
+          gap: 6px;
+        }
+        .stats {
+          padding: 0 8px;
+          gap: 6px;
+        }
+        .stat {
+          gap: 3px;
+        }
+        .stat b {
+          font-size: 13px;
+        }
+        .stat small {
+          font-size: 9px;
+        }
+        .stat + .stat {
+          padding-left: 6px;
+        }
+        .stat:last-child {
+          flex: 1;
+          justify-content: flex-end;
+        }
+        .stat:last-child small {
+          max-width: 120px;
+        }
+        .plots {
+          gap: 6px;
+        }
+        .charthead {
+          padding-left: 8px;
+          padding-right: 8px;
+        }
+        .charthead h2 {
+          font-size: 12px;
+          letter-spacing: -0.04em;
+        }
+        .chartbar {
+          font-size: 9px;
+          padding: 0 8px;
+        }
+        .legend {
+          padding-left: 6px;
+          padding-right: 6px;
+          gap: 2px;
+        }
+        .plot {
+          grid-template-rows: 56px 30px minmax(0, 1fr) 48px;
+        }
+        .legend {
+          flex-wrap: wrap;
+          overflow: hidden;
+          align-content: center;
+        }
+        .legend button {
+          font-size: 10px;
+          padding: 1px 4px;
+          min-height: 20px;
+          flex: 0 0 calc((100% - 4px) / 3);
+        }
+        .swatch {
+          width: 9px;
+          margin-right: 3px;
+        }
+        .empty {
+          inset: 12px 10px;
+        }
+        .empty span {
+          display: none;
+        }
+        .footer span:last-child {
+          display: none;
+        }
+        .timelinebar .caps {
+          font-size: 9px;
+        }
+        .top .brand > span {
+          font-size: 11px;
+        }
+      }
+      @media (max-height: 540px) {
+        main {
+          grid-template-rows: 28px 20px minmax(0, 1fr) minmax(0, 1fr) 12px;
+          gap: 4px;
+          padding: 6px;
+        }
+        .camera-zone {
+          grid-template-rows: minmax(0, 1fr) 22px;
+          gap: 4px;
+        }
+        .camera {
+          grid-template-rows: 22px minmax(0, 1fr) 18px;
+        }
+        .action-zone {
+          grid-template-rows: 24px minmax(0, 1fr);
+          gap: 4px;
+        }
+        .plot {
+          grid-template-rows: 30px 18px minmax(0, 1fr) 25px;
+        }
+        .charthead {
+          flex-direction: row;
+          align-items: center;
+          padding: 2px 8px;
+        }
+        .charthead h2 {
+          font-size: 11px;
+        }
+        .chartbar {
+          font-size: 9px;
+          flex-direction: row;
+        }
+        .chartbar > span:last-child {
+          display: none;
+        }
+        .legend {
+          padding-bottom: 2px;
+        }
+        .stats .stat small {
+          display: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand"><b>OpenPI</b><span>推理工作台</span></div>
+      <div class="topright">
+        <span class="hint">保存回放 · 只读推理</span
+        ><span class="badge" id="connection"><i class="dot"></i>连接中</span
+        ><button class="mobile-toggle" id="toggleSidebar">设置</button
+        ><button id="exitWorkbench">退出</button>
+      </div>
+    </header>
+    <div class="layout">
+      <aside id="sidebar">
+        <div>
+          <p class="caps">CONTROL PANEL</p>
+          <div class="sidebar-title">运行配置</div>
+          <p class="hint" style="margin-top: 6px">参数在下一轮启动时生效</p>
+        </div>
+        <section class="section">
+          <h3><span class="step">01</span>任务与 Checkpoint</h3>
+          <label class="field"
+            >训练任务 / 配方<select id="task" aria-label="训练任务">
+              <option>扫描中…</option>
+            </select></label
+          >
+          <label class="field"
+            >训练步数<select id="model" aria-label="训练步数"></select
+          ></label>
+          <button id="refreshCatalog" class="full">刷新 checkpoints</button>
+          <p id="catalogStatus" class="hint"></p>
+          <button id="applyTask" class="full">应用选择</button
+          ><button id="startServer" class="primary full" disabled>
+            启动 server
+          </button>
+          <button id="stopServer" class="full" disabled>关闭模型</button>
+          <div id="serverStatus" class="server-state" aria-live="polite">
+            Server 未启动
+          </div>
+          <span id="modelReady" class="hint">读取文件状态…</span>
+        </section>
+        <section class="section">
+          <h3><span class="step">02</span>回放输入</h3>
+          <label class="field"
+            >目标支持示例<select id="episode" aria-label="目标支持示例"></select
+          ></label>
+          <button id="applyEpisode" class="full">应用示例</button>
+          <p class="hint" id="sampleInfo">请选择已发布 checkpoint。</p>
+          <div class="note">
+            三视角来自保存的目标支持帧。每次推理独立 reset，不发送机械臂指令。
+          </div>
+        </section>
+        <section class="section">
+          <h3><span class="step">03</span>推理与 IK 参数</h3>
+          <div class="row between">
+            <span>模型原始 horizon</span
+            ><span class="badge">30 步 / 1.00 s</span>
+          </div>
+          <label class="field"
+            >采用的 action horizon
+            <input
+              id="horizon"
+              type="number"
+              min="1"
+              max="30"
+              step="1"
+              value="30" /></label
+          ><label class="field"
+            >IK 前缀步数<input
+              id="execute_steps"
+              type="number"
+              min="1"
+              max="30"
+              step="1"
+              value="15" /></label
+          ><label class="field"
+            >模型时间基准<select id="control_hz" disabled>
+              <option value="30">30 Hz</option>
+            </select></label
+          ><label class="field"
+            >IK 速度约束<select id="velocity_mode" aria-label="IK 速度约束">
+              <option value="urdf">URDF · 默认限制</option>
+              <option value="collection">本机采集控制器限制</option>
+            </select></label
+          ><label class="field"
+            >每轮推理次数<input
+              id="max_chunks"
+              type="number"
+              min="1"
+              max="20"
+              step="1"
+              value="1"
+          /></label>
+          <div class="note" id="configSummary">
+            每轮执行 0.50 s · 累计动作 60 s
+          </div>
+          <button id="applyConfig" class="full">应用推理参数</button
+          ><button id="resetConfig" class="full" style="background: #f5f5f5">
+            恢复默认参数
+          </button>
+          <p class="hint">
+            模型输出固定 30×14。采用 horizon 选择显示前缀，IK 只求解前 N
+            步。速度约束触发时保留拒绝结果。
+          </p>
+        </section>
+        <p class="hint">
+          关闭最后一个页面后，工作台自动关闭自己启动的模型进程。
+        </p>
+      </aside>
+      <main>
+        <div class="controlbar">
+          <div class="controltitle">
+            <h1>推理控制</h1>
+            <p id="subtitle">读取任务与模型…</p>
+          </div>
+          <div class="buttons">
+            <button id="shadow" disabled>只读推理</button
+            ><button class="stop" id="stop">■ 取消本轮</button>
+          </div>
+        </div>
+        <div class="status">
+          <span class="badge dark" id="phase">待机</span
+          ><span class="badge" id="serverBadge">Server 未启动</span
+          ><span class="message" id="message">正在读取 OpenPI 状态…</span
+          ><span class="badge">保存回放</span>
+        </div>
+        <div class="camera-zone">
+          <div class="cameras">
+            <section class="card camera">
+              <div class="camerahead">
+                <h3>左腕视角</h3>
+                <span class="badge">LEFT</span>
+              </div>
+              <div class="image"><img id="live-left" alt="左腕保存帧" /></div>
+              <div class="camerafoot">
+                <span>保存回放输入</span><span class="age">—</span>
+              </div>
+            </section>
+            <section class="card camera">
+              <div class="camerahead">
+                <h3>主视角</h3>
+                <span class="badge">MAIN</span>
+              </div>
+              <div class="image"><img id="live-main" alt="主视角保存帧" /></div>
+              <div class="camerafoot">
+                <span>保存回放输入</span><span class="age">—</span>
+              </div>
+            </section>
+            <section class="card camera">
+              <div class="camerahead">
+                <h3>右腕视角</h3>
+                <span class="badge">RIGHT</span>
+              </div>
+              <div class="image"><img id="live-right" alt="右腕保存帧" /></div>
+              <div class="camerafoot">
+                <span>保存回放输入</span><span class="age">—</span>
+              </div>
+            </section>
+          </div>
+          <div class="stats">
+            <div class="stat">
+              <p class="caps">DECISIONS</p>
+              <b id="decisions">0</b><small>次模型决策</small>
+            </div>
+            <div class="stat">
+              <p class="caps">ACTION HORIZON</p>
+              <b id="horizonStat">30</b
+              ><small id="horizonTime">步 · 1.00 s</small>
+            </div>
+            <div class="stat">
+              <p class="caps">EXECUTE PREFIX</p>
+              <b id="executeStat">15</b
+              ><small id="executeTime">步 · 0.50 s</small>
+            </div>
+            <div class="stat">
+              <p class="caps">TARGET UPDATE RATE</p>
+              <b id="hzStat">30</b
+              ><small id="actualHz">Hz · 底层 30 Hz / 等待 ACK</small>
+            </div>
+          </div>
+        </div>
+        <div class="action-zone">
+          <div class="timelinebar">
+            <span class="caps">ACTION / 决策与预测时间轴</span>
+            <div class="charttools">
+              <select id="window" aria-label="时间窗口">
+                <option value="10">最近 10 秒</option>
+                <option value="20" selected>最近 20 秒</option>
+                <option value="60">最近 60 秒</option></select
+              ><button id="follow">暂停跟随</button>
+            </div>
+          </div>
+          <div class="plots">
+            <section class="card plot">
+              <div class="charthead">
+                <div>
+                  <h2>Camera-frame EE action</h2>
+                  <p>模型原始输出 · 左右臂 14 维 · 决策节点与预测 horizon</p>
+                </div>
+                <div class="chartcontrols">
+                  <select id="eeGroup" aria-label="EE 维度组">
+                    <option value="position">位置 Δx / Δy / Δz · m</option>
+                    <option value="rotation">旋转 rx / ry / rz · rad</option>
+                    <option value="gripper">夹爪 · 0–1</option>
+                  </select>
+                </div>
+              </div>
+              <div class="chartbar">
+                <span
+                  ><i class="keysolid"></i>IK 前缀
+                  <i class="keyline"></i>其余预测</span
+                ><span id="inferenceInfo">等待真实推理数据</span>
+              </div>
+              <div class="chartbox">
+                <canvas id="eeChart"></canvas>
+                <div class="empty" id="eeEmpty">
+                  <strong>模型尚未开始决策</strong
+                  ><span>启动后显示真实输出，不填充模拟曲线</span>
+                </div>
+              </div>
+              <div class="legend" id="eeLegend"></div>
+            </section>
+            <section class="card plot">
+              <div class="charthead">
+                <div>
+                  <h2>Joint action after IK</h2>
+                  <p>
+                    IK IK 前缀 · 指令 ACK 与关节实测 · 不外推未求解的关节
+                    horizon
+                  </p>
+                </div>
+                <div class="chartcontrols">
+                  <select id="jointGroup" aria-label="关节维度组">
+                    <option value="left">左臂 J1–J6 · rad</option>
+                    <option value="right">右臂 J1–J6 · rad</option>
+                    <option value="gripper">左右夹爪 · 0–1</option>
+                  </select>
+                </div>
+              </div>
+              <div class="chartbar">
+                <span
+                  ><i class="keyline"></i>IK 计划 <i class="keysolid"></i>ACK ·
+                  浅线实测</span
+                ><span id="ackInfo">等待离线 IK 结果</span>
+              </div>
+              <div class="chartbox">
+                <canvas id="jointChart"></canvas>
+                <div class="empty" id="jointEmpty">
+                  <strong>等待 IK 计划</strong
+                  ><span>竖线标记决策，阴影展示预测与执行范围</span>
+                </div>
+              </div>
+              <div class="legend" id="jointLegend"></div>
+            </section>
+          </div>
+        </div>
+        <div class="footer">
+          <span id="progress">等待只读推理 · 图表暂停仅影响查看</span
+          ><span id="logpath">OpenPI / localhost</span>
+        </div>
+      </main>
+    </div>
+    <div id="tooltip" class="hidden"></div>
+    <script src="/static/workbench.js"></script>
+  </body>
+</html>

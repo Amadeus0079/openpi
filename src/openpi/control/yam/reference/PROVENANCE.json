@@ -1,0 +1,15 @@
+{
+  "geometry_reference": {
+    "path": "packages/openpi-client/src/openpi_client/yam_hybrid.py",
+    "source_sha256": "99131f165500cc59dea964815312efda38fa4c75aa3caa3ca1b5fc3211d129c4",
+    "checkout": "ascend/hybrid@8bce235 plus recorded training working tree",
+    "adaptation": "CameraEEBridge geometry retained; OpenPI runtime inheritance and offline environment removed"
+  },
+  "wire_reference": {
+    "repository": "https://github.com/Physical-Intelligence/openpi",
+    "commit": "215abfb217dbac7d5f1273282331b9b1866c0479",
+    "path": "packages/openpi-client/src/openpi_client/msgpack_numpy.py",
+    "license": "Apache-2.0; LICENSE.openpi"
+  },
+  "kinematics": "MuJoCo model compiled from checkpoint URDF; Mink 0.0.13 QP; no hardware driver construction"
+}

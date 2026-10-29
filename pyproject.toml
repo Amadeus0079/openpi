@@ -44,6 +44,9 @@ dependencies = [
 [project.urls]
 Repository = "https://github.com/Physical-Intelligence/openpi"
 
+[project.scripts]
+openpi-control = "openpi.control.app:main"
+
 [dependency-groups]
 dev = [
     "pytest>=8.3.4",
@@ -130,6 +133,14 @@ force-single-line = true
 force-sort-within-sections = true
 single-line-exclusions = ["collections.abc", "typing", "typing_extensions"]
 known-third-party = ["wandb"]
+
+[tool.ruff.lint.per-file-ignores]
+# Chinese UI copy and lazy imports keep catalog/HTTP usable without loading a GPU runtime.
+"src/openpi/control/**" = ["RUF001", "PLC0415"]
+"src/openpi/policies/policy_config.py" = ["PLC0415"]
+# Frame_T_frame is the established transform convention of the imported YAM geometry.
+"src/openpi/control/yam/mapping.py" = ["N803", "N815"]
+"src/openpi/control/yam/reference/*.py" = ["N803", "N806", "N818"]
 
 [build-system]
 requires = ["hatchling"]

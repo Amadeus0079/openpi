@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import pathlib
@@ -45,6 +46,26 @@ def create_trained_policy(
     repack_transforms = repack_transforms or transforms.Group()
     checkpoint_dir = download.maybe_download(str(checkpoint_dir))
 
+    # New YAM-1 publications bind the trained implementation, routing and geometry.
+    manifest_path = pathlib.Path(checkpoint_dir) / "inference-manifest.json"
+    if manifest_path.is_file() and json.loads(manifest_path.read_text()).get("schema") == "yam1-hybrid-inference-v1":
+        from openpi.policies import yam1_hybrid
+
+        config, manifest, metadata = yam1_hybrid.verify(checkpoint_dir, train_config)
+        yam1_hybrid.preprocessing(checkpoint_dir, config)
+        if norm_stats is not None:
+            raise ValueError("YAM-1 publications require their SHA-bound frozen normalization")
+        return yam1_hybrid.create_policy(
+            checkpoint_dir,
+            config,
+            manifest,
+            metadata,
+            device=pytorch_device or "cuda:0",
+            default_prompt=default_prompt,
+            sample_kwargs=sample_kwargs,
+            repack_transforms=repack_transforms,
+        )
+
     # Check if this is a PyTorch model by looking for model.safetensors
     weight_path = os.path.join(checkpoint_dir, "model.safetensors")
     is_pytorch = os.path.exists(weight_path)
@@ -52,6 +73,7 @@ def create_trained_policy(
     metadata = train_config.policy_metadata
     if isinstance(train_config.data, _config.LeRobotYamHybridDataConfig):
         from openpi.policies.hybrid_assets import verify_checkpoint
+
         metadata = verify_checkpoint(pathlib.Path(checkpoint_dir), train_config.model)
 
     logging.info("Loading model...")
