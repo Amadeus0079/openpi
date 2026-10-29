@@ -34,6 +34,11 @@ class Pi0Config(_model.BaseModelConfig):
 
     pytorch_compile_mode: str | None = "max-autotune"
 
+    # Ascend recipe kernels; standard parameter names remain unchanged.
+    pytorch_fuse_qkv: bool = False
+    pytorch_npu_fusion_attention: bool = False
+    pytorch_grouped_mlp: bool = False
+
     def __post_init__(self):
         if self.max_token_len is None:
             object.__setattr__(self, "max_token_len", 200 if self.pi05 else 48)
@@ -56,7 +61,7 @@ class Pi0Config(_model.BaseModelConfig):
 
     @override
     def create(self, rng: at.KeyArrayLike) -> "Pi0":
-        from openpi.models.pi0 import Pi0
+        from openpi.models.pi0 import Pi0  # noqa: PLC0415 -- avoid loading JAX model for PyTorch training
 
         return Pi0(self, rngs=nnx.Rngs(rng))
 

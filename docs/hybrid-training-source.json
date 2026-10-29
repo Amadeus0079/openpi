@@ -1,0 +1,16 @@
+{
+  "training_head": "8bce235b5699cb8975bf0fcf29a8dea128e4d218",
+  "source_files_sha256": {
+    "src/openpi/models/model.py": "0d74bc1d8f4623ac3d8e543710b8bf75f9b95e588a3ebf6127c659e001385cff",
+    "src/openpi/models/tokenizer.py": "e97e9389504178825ed9589d0d8c8c1bd7ebe3dcee8cb5703dcb31f73a0604be",
+    "src/openpi/models/pi0_config.py": "761d54e9aa2cfad1db536fce4a51b7b545f5bd79aefa30eb2e4488161614e72d",
+    "src/openpi/models_pytorch/pi0_pytorch.py": "cc615f209cb826e62d4b7fd896a2e6444b8bf889d1645fceadaeb96117e3c298",
+    "src/openpi/models_pytorch/gemma_pytorch.py": "1333237f320632ab6193f022ce1fcac0e3887ee44c19885e1d91df1120d40843",
+    "src/openpi/models_pytorch/preprocessing_pytorch.py": "6a44e91be2d7a724c6140d2cc98ed0a631b8d38bbb29f63b380a0a19f903bbf6",
+    "src/openpi/models_pytorch/ascend_optimizations.py": "7c5b7eab1345b0ad6ec7d2a13fec68355efbaebd98dd0ddd839ec53afcb4c352",
+    "src/openpi/policies/yam_hybrid_policy.py": "9ba0a6c17ea53497412f504b15bb9433b4fbf994f99dcc8b03a92955924ed935",
+    "src/openpi/models_pytorch/ascend_optimizations_test.py": "80791fbaded14446d29c54edf72886cc8b09562cee65db76455f01dbd4b5c1c9",
+    "src/openpi/models_pytorch/gemma_pytorch_test.py": "a2261b1b514ea09349bb52f7ff2c16a6c2842f5a70e965b89b4dba9bfe752e5d",
+    "scripts/serve_policy.py": "4e078a1571d59bf7ec0eec8307195d0e1d84be160f04a620b1c53901cec8b6c0"
+  }
+}

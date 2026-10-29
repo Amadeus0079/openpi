@@ -557,6 +557,26 @@ class TrainConfig:
 
 
 # Use `get_config` if you need to get a config by name in your code.
+
+@dataclasses.dataclass(frozen=True)
+class LeRobotYamHybridDataConfig(DataConfigFactory):
+    """Inference-only transforms matching the immutable camera-anchor contract."""
+    repo_id: str = "yam_hybrid"
+
+    def create(self, assets_dirs, model_config):
+        from openpi.policies.yam_hybrid_policy import HybridInputs, HybridOutputs, MaskState
+        return DataConfig(
+            repo_id=self.repo_id, asset_id="yam_hybrid", use_quantile_norm=True,
+            prompt_from_task=True,
+            data_transforms=_transforms.Group(inputs=[HybridInputs()], outputs=[HybridOutputs()]),
+            model_transforms=_transforms.Group(inputs=[
+                MaskState(), _transforms.ResizeImages(224, 224),
+                _transforms.PadStatesAndActions(model_config.action_dim),
+                _transforms.TokenizePrompt(_tokenizer.PaligemmaTokenizer(model_config.max_token_len),
+                                          discrete_state_input=True),
+            ]), action_sequence_keys=("action", "action.valid"),
+        )
+
 _CONFIGS = [
     #
     # Inference Aloha configs.
@@ -972,6 +992,15 @@ _CONFIGS = [
 
 if len({config.name for config in _CONFIGS}) != len(_CONFIGS):
     raise ValueError("Config names must be unique.")
+_CONFIGS.append(TrainConfig(
+    name="pi05_yam_hybrid",
+    model=pi0_config.Pi0Config(pi05=True, action_horizon=30, max_token_len=200,
+        discrete_state_input=True, pytorch_compile_mode=None,
+        pytorch_fuse_qkv=True, pytorch_npu_fusion_attention=True, pytorch_grouped_mlp=True),
+    data=LeRobotYamHybridDataConfig(),
+    policy_metadata={"robot_type": "yam", "action_version": "camera_anchor_ee_v1"},
+))
+
 _CONFIGS_DICT = {config.name: config for config in _CONFIGS}
 
 

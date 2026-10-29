@@ -57,6 +57,14 @@ class WebsocketPolicyServer:
                 start_time = time.monotonic()
                 obs = msgpack_numpy.unpackb(await websocket.recv())
 
+                if isinstance(obs, dict) and obs.get("type") == "reset":
+                    reset = getattr(self._policy, "reset", None)
+                    if reset is not None:
+                        reset()
+                    await websocket.send(packer.pack({"status": "ok"}))
+                    prev_total_time = None
+                    continue
+
                 infer_time = time.monotonic()
                 action = self._policy.infer(obs)
                 infer_time = time.monotonic() - infer_time

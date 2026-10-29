@@ -46,7 +46,11 @@ class Args:
     # prompt.
     default_prompt: str | None = None
 
+    # PyTorch inference device, e.g. npu:0, cuda:0, or cpu; default is automatic.
+    pytorch_device: str | None = None
+
     # Port to serve the policy on.
+    host: str = "127.0.0.1"
     port: int = 8000
     # Record the policy's behavior for debugging.
     record: bool = False
@@ -76,11 +80,16 @@ DEFAULT_CHECKPOINT: dict[EnvMode, Checkpoint] = {
 }
 
 
-def create_default_policy(env: EnvMode, *, default_prompt: str | None = None) -> _policy.Policy:
+def create_default_policy(
+    env: EnvMode, *, default_prompt: str | None = None, pytorch_device: str | None = None
+) -> _policy.Policy:
     """Create a default policy for the given environment."""
     if checkpoint := DEFAULT_CHECKPOINT.get(env):
         return _policy_config.create_trained_policy(
-            _config.get_config(checkpoint.config), checkpoint.dir, default_prompt=default_prompt
+            _config.get_config(checkpoint.config),
+            checkpoint.dir,
+            default_prompt=default_prompt,
+            pytorch_device=pytorch_device,
         )
     raise ValueError(f"Unsupported environment mode: {env}")
 
@@ -90,10 +99,15 @@ def create_policy(args: Args) -> _policy.Policy:
     match args.policy:
         case Checkpoint():
             return _policy_config.create_trained_policy(
-                _config.get_config(args.policy.config), args.policy.dir, default_prompt=args.default_prompt
+                _config.get_config(args.policy.config),
+                args.policy.dir,
+                default_prompt=args.default_prompt,
+                pytorch_device=args.pytorch_device,
             )
         case Default():
-            return create_default_policy(args.env, default_prompt=args.default_prompt)
+            return create_default_policy(
+                args.env, default_prompt=args.default_prompt, pytorch_device=args.pytorch_device
+            )
 
 
 def main(args: Args) -> None:
@@ -110,7 +124,7 @@ def main(args: Args) -> None:
 
     server = websocket_policy_server.WebsocketPolicyServer(
         policy=policy,
-        host="0.0.0.0",
+        host=args.host,
         port=args.port,
         metadata=policy_metadata,
     )

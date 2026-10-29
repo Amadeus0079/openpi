@@ -49,6 +49,11 @@ def create_trained_policy(
     weight_path = os.path.join(checkpoint_dir, "model.safetensors")
     is_pytorch = os.path.exists(weight_path)
 
+    metadata = train_config.policy_metadata
+    if isinstance(train_config.data, _config.LeRobotYamHybridDataConfig):
+        from openpi.policies.hybrid_assets import verify_checkpoint
+        metadata = verify_checkpoint(pathlib.Path(checkpoint_dir), train_config.model)
+
     logging.info("Loading model...")
     if is_pytorch:
         model = train_config.model.load_pytorch(train_config, weight_path)
@@ -88,7 +93,7 @@ def create_trained_policy(
             *repack_transforms.outputs,
         ],
         sample_kwargs=sample_kwargs,
-        metadata=train_config.policy_metadata,
+        metadata=metadata,
         is_pytorch=is_pytorch,
         pytorch_device=pytorch_device if is_pytorch else None,
     )

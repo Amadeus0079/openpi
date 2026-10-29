@@ -7,6 +7,8 @@ from transformers import PaliGemmaForConditionalGeneration
 from transformers.models.auto import CONFIG_MAPPING
 from transformers.models.gemma import modeling_gemma
 
+from openpi.models_pytorch import ascend_optimizations as ascend
+
 
 class PaliGemmaWithExpertModel(nn.Module):
     def __init__(
@@ -57,6 +59,10 @@ class PaliGemmaWithExpertModel(nn.Module):
         self.gemma_expert = GemmaForCausalLM(config=action_expert_config_hf)
         self.gemma_expert.model.embed_tokens = None
 
+        self.fuse_qkv = False
+        self.use_npu_fusion_attention = False
+        self.use_grouped_mlp = False
+
         self.to_bfloat16_for_selected_params(precision)
 
     def to_bfloat16_for_selected_params(self, precision: Literal["bfloat16", "float32"] = "bfloat16"):
@@ -93,7 +99,7 @@ class PaliGemmaWithExpertModel(nn.Module):
         position_ids: torch.LongTensor | None = None,
         past_key_values: list[torch.FloatTensor] | None = None,
         inputs_embeds: list[torch.FloatTensor] | None = None,
-        use_cache: bool | None = None,
+        use_cache: bool | None = None,  # noqa: FBT001 -- matches the Transformers forward signature
         adarms_cond: list[torch.Tensor] | None = None,
     ):
         if adarms_cond is None:
@@ -126,19 +132,30 @@ class PaliGemmaWithExpertModel(nn.Module):
             models = [self.paligemma.language_model, self.gemma_expert.model]
             num_layers = self.paligemma.config.text_config.num_hidden_layers
 
+            # All joint decoder layers share the same positions and head width.
+            # Compute RoPE once, also reusing it during layer recomputation.
+            dummy_tensor = inputs_embeds[0].new_empty(
+                inputs_embeds[0].shape[0],
+                sum(embeds.shape[1] for embeds in inputs_embeds),
+                models[0].layers[0].self_attn.head_dim,
+            )
+            if dummy_tensor.device.type == "npu" and torch.is_autocast_enabled("npu"):
+                dummy_tensor = dummy_tensor.to(torch.get_autocast_dtype("npu"))
+            rope_cos, rope_sin = self.paligemma.model.language_model.rotary_emb(dummy_tensor, position_ids)
+            if (
+                getattr(self, "use_npu_fusion_attention", False)
+                and inputs_embeds[0].device.type == "npu"
+                and attention_mask is not None
+            ):
+                # Reuse the native boolean block mask across layers/recomputation.
+                attention_mask = attention_mask < 0
+
             # Check if gradient checkpointing is enabled for any of the models
             use_gradient_checkpointing = (
                 hasattr(self.gemma_expert.model, "gradient_checkpointing")
                 and self.gemma_expert.model.gradient_checkpointing
                 and self.training
             ) or (hasattr(self, "gradient_checkpointing") and self.gradient_checkpointing and self.training)
-
-            # Force enable gradient checkpointing if we're in training mode and the model supports it
-            if self.training and hasattr(self.gemma_expert.model, "gradient_checkpointing"):
-                if not self.gemma_expert.model.gradient_checkpointing:
-                    print("Forcing gradient checkpointing to be enabled for Gemma expert model")
-                    self.gemma_expert.model.gradient_checkpointing = True
-                use_gradient_checkpointing = True
 
             # Debug gradient checkpointing status
             if hasattr(self, "_debug_gc_printed") and not self._debug_gc_printed:
@@ -154,7 +171,7 @@ class PaliGemmaWithExpertModel(nn.Module):
                 self._debug_gc_printed = True
 
             # Define the complete layer computation function for gradient checkpointing
-            def compute_layer_complete(layer_idx, inputs_embeds, attention_mask, position_ids, adarms_cond):
+            def compute_layer_complete(layer_idx, inputs_embeds, attention_mask, cos, sin, adarms_cond):
                 models = [self.paligemma.language_model, self.gemma_expert.model]
 
                 query_states = []
@@ -168,9 +185,12 @@ class PaliGemmaWithExpertModel(nn.Module):
 
                     input_shape = hidden_states.shape[:-1]
                     hidden_shape = (*input_shape, -1, layer.self_attn.head_dim)
-                    query_state = layer.self_attn.q_proj(hidden_states).view(hidden_shape).transpose(1, 2)
-                    key_state = layer.self_attn.k_proj(hidden_states).view(hidden_shape).transpose(1, 2)
-                    value_state = layer.self_attn.v_proj(hidden_states).view(hidden_shape).transpose(1, 2)
+                    query, key, value = ascend.project_qkv(
+                        layer.self_attn, hidden_states, fuse=i == 0 and getattr(self, "fuse_qkv", False)
+                    )
+                    query_state = query.view(hidden_shape).transpose(1, 2)
+                    key_state = key.view(hidden_shape).transpose(1, 2)
+                    value_state = value.view(hidden_shape).transpose(1, 2)
 
                     query_states.append(query_state)
                     key_states.append(key_state)
@@ -181,14 +201,6 @@ class PaliGemmaWithExpertModel(nn.Module):
                 key_states = torch.cat(key_states, dim=2)
                 value_states = torch.cat(value_states, dim=2)
 
-                dummy_tensor = torch.zeros(
-                    query_states.shape[0],
-                    query_states.shape[2],
-                    query_states.shape[-1],
-                    device=query_states.device,
-                    dtype=query_states.dtype,
-                )
-                cos, sin = self.paligemma.model.language_model.rotary_emb(dummy_tensor, position_ids)
                 query_states, key_states = modeling_gemma.apply_rotary_pos_emb(
                     query_states, key_states, cos, sin, unsqueeze_dim=1
                 )
@@ -197,14 +209,19 @@ class PaliGemmaWithExpertModel(nn.Module):
                 scaling = self.paligemma.language_model.layers[layer_idx].self_attn.scaling
 
                 # Attention computation
-                att_output, _ = modeling_gemma.eager_attention_forward(
-                    self.paligemma.language_model.layers[layer_idx].self_attn,
-                    query_states,
-                    key_states,
-                    value_states,
-                    attention_mask,
-                    scaling,
-                )
+                if getattr(self, "use_npu_fusion_attention", False) and query_states.device.type == "npu":
+                    att_output = ascend.npu_fusion_attention(
+                        query_states, key_states, value_states, attention_mask, scaling
+                    )
+                else:
+                    att_output, _ = modeling_gemma.eager_attention_forward(
+                        self.paligemma.language_model.layers[layer_idx].self_attn,
+                        query_states,
+                        key_states,
+                        value_states,
+                        attention_mask,
+                        scaling,
+                    )
                 # Get head_dim from the current layer, not from the model
                 head_dim = self.paligemma.language_model.layers[layer_idx].self_attn.head_dim
                 att_output = att_output.reshape(batch_size, -1, 1 * 8 * head_dim)
@@ -216,7 +233,9 @@ class PaliGemmaWithExpertModel(nn.Module):
                     layer = models[i].layers[layer_idx]
                     end_pos = start_pos + hidden_states.shape[1]
 
-                    if att_output.dtype != layer.self_attn.o_proj.weight.dtype:
+                    if att_output.dtype != layer.self_attn.o_proj.weight.dtype and not torch.is_autocast_enabled(
+                        att_output.device.type
+                    ):
                         att_output = att_output.to(layer.self_attn.o_proj.weight.dtype)
                     out_emb = layer.self_attn.o_proj(att_output[:, start_pos:end_pos])
 
@@ -228,7 +247,11 @@ class PaliGemmaWithExpertModel(nn.Module):
                     if layer.mlp.up_proj.weight.dtype == torch.bfloat16:
                         out_emb = out_emb.to(dtype=torch.bfloat16)
 
-                    out_emb = layer.mlp(out_emb)
+                    out_emb = (
+                        ascend.grouped_mlp(layer.mlp, out_emb)
+                        if getattr(self, "use_grouped_mlp", False)
+                        else layer.mlp(out_emb)
+                    )
                     # second residual
                     out_emb = modeling_gemma._gated_residual(after_first_residual, out_emb, gate)  # noqa: SLF001
                     outputs_embeds.append(out_emb)
@@ -244,14 +267,15 @@ class PaliGemmaWithExpertModel(nn.Module):
                         layer_idx,
                         inputs_embeds,
                         attention_mask,
-                        position_ids,
+                        rope_cos,
+                        rope_sin,
                         adarms_cond,
                         use_reentrant=False,
                         preserve_rng_state=False,
                     )
                 else:
                     inputs_embeds = compute_layer_complete(
-                        layer_idx, inputs_embeds, attention_mask, position_ids, adarms_cond
+                        layer_idx, inputs_embeds, attention_mask, rope_cos, rope_sin, adarms_cond
                     )
 
                 # Old code removed - now using compute_layer_complete function above

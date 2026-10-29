@@ -1,0 +1,221 @@
+{
+  "date": "2026-10-19",
+  "models": [
+    {
+      "dataset": "yam_only",
+      "checkpoint": "/nas/data/yam-ckpts/hybrid_pi05/yam_only/10000",
+      "dataset_identity": "e1b824f73cea62d77554e1c2b740d6302cc65a4ac7e4ca50d08c4aa439265ae9",
+      "model_sha256": "fefcbc4524d4f22b7a19732fd794698978a4f66d060bd899872c623d606f2620",
+      "model_bytes": 14467165872,
+      "manifest_files": 12,
+      "cuda_output_shape": [
+        30,
+        14
+      ],
+      "all_cuda_outputs_finite": true,
+      "replay_inference_ms": [
+        413.23878709226847,
+        119.4396773353219,
+        116.66883062571287
+      ],
+      "preprocessing": {
+        "status": "complete",
+        "checkpoint": "/nas/data/yam-ckpts/hybrid_pi05/yam_only/10000",
+        "state_max_error": 0.0,
+        "valid_action_max_error": 4.9432782089908756e-08,
+        "rgb_letterbox_masks": true,
+        "masked_state_after_normalization": true,
+        "token_count": 200
+      },
+      "replay_prefix_ik_passed": 3,
+      "replay_prefix_ik_trials": 3,
+      "shadow_status": "failed",
+      "shadow_inference_ms": 352.8027911670506,
+      "shadow_ik_ms": 38.280258886516094,
+      "shadow_executed_steps": 0,
+      "shadow_failure": "IKFailure: right arm: IK target 8: IK did not converge: position=0.000238805 m rotation=7.88333e-06 rad",
+      "shadow_limit_diagnosis": {
+        "dataset": "yam_only",
+        "arm": "right",
+        "target_index_zero_based": 8,
+        "diagnostic_only": true,
+        "bounded_position_error_m": 0.0002388047327244367,
+        "unbounded_position_error_m": 2.1502714501268745e-13,
+        "violations": [
+          {
+            "joint": 2,
+            "q": -0.003709477354942275,
+            "bounds": [
+              0.0,
+              3.66519
+            ]
+          }
+        ]
+      },
+      "artifacts": {
+        "replay_predictions": "/home/ps/zichen/workplace/YAM-Client/outputs/pi-client/server-yam_only-20261019",
+        "shadow": "/home/ps/zichen/workplace/YAM-Client/outputs/pi-client/shadow-yam_only-20261019"
+      }
+    },
+    {
+      "dataset": "yam_source_top10",
+      "checkpoint": "/nas/data/yam-ckpts/hybrid_pi05/yam_source_top10/10000",
+      "dataset_identity": "fe28ef1ab6e060ac721fd2845a43622ac64ce8bb8803ae658e179b5f8f03a1a2",
+      "model_sha256": "6fab62ab3baf27406449ddb7ee8453847f75a4e809e52b08c7ec953dddd8adb9",
+      "model_bytes": 14467165872,
+      "manifest_files": 12,
+      "cuda_output_shape": [
+        30,
+        14
+      ],
+      "all_cuda_outputs_finite": true,
+      "replay_inference_ms": [
+        318.0218916386366,
+        116.2648219615221,
+        114.96481718495488
+      ],
+      "preprocessing": {
+        "status": "complete",
+        "checkpoint": "/nas/data/yam-ckpts/hybrid_pi05/yam_source_top10/10000",
+        "state_max_error": 0.0,
+        "valid_action_max_error": 7.189968109777567e-08,
+        "rgb_letterbox_masks": true,
+        "masked_state_after_normalization": true,
+        "token_count": 200
+      },
+      "replay_prefix_ik_passed": 0,
+      "replay_prefix_ik_trials": 3,
+      "shadow_status": "failed",
+      "shadow_inference_ms": 174.33836124837399,
+      "shadow_ik_ms": 35.79919598996639,
+      "shadow_executed_steps": 0,
+      "shadow_failure": "IKFailure: left arm: IK target 0: IK did not converge: position=0.000306415 m rotation=8.80613e-06 rad",
+      "shadow_limit_diagnosis": {
+        "dataset": "yam_source_top10",
+        "arm": "left",
+        "target_index_zero_based": 0,
+        "diagnostic_only": true,
+        "bounded_position_error_m": 0.00030641545016443116,
+        "unbounded_position_error_m": 5.930139060832223e-13,
+        "violations": [
+          {
+            "joint": 2,
+            "q": -0.004705155618699961,
+            "bounds": [
+              0.0,
+              3.66519
+            ]
+          }
+        ]
+      },
+      "artifacts": {
+        "replay_predictions": "/home/ps/zichen/workplace/YAM-Client/outputs/pi-client/server-yam_source_top10-20261019",
+        "shadow": "/home/ps/zichen/workplace/YAM-Client/outputs/pi-client/shadow-yam_source_top10-20261019"
+      }
+    },
+    {
+      "dataset": "yam_global_top80",
+      "checkpoint": "/nas/data/yam-ckpts/hybrid_pi05/yam_global_top80/10000",
+      "dataset_identity": "03335c4c1d9b5bb7665ff5910ed1ac4011e682658427135d2b767fd7f617210c",
+      "model_sha256": "0d299cf1a6b8ddb9406a67858540d0299f6d35e37a436d613bd286cd40d3566b",
+      "model_bytes": 14467165872,
+      "manifest_files": 12,
+      "cuda_output_shape": [
+        30,
+        14
+      ],
+      "all_cuda_outputs_finite": true,
+      "replay_inference_ms": [
+        125.77248783782125,
+        117.7820092998445,
+        118.21885593235493
+      ],
+      "preprocessing": {
+        "status": "complete",
+        "checkpoint": "/nas/data/yam-ckpts/hybrid_pi05/yam_global_top80/10000",
+        "state_max_error": 0.0,
+        "valid_action_max_error": 7.289570502777565e-08,
+        "rgb_letterbox_masks": true,
+        "masked_state_after_normalization": true,
+        "token_count": 200
+      },
+      "replay_prefix_ik_passed": 3,
+      "replay_prefix_ik_trials": 3,
+      "shadow_status": "failed",
+      "shadow_inference_ms": 444.427827373147,
+      "shadow_ik_ms": 38.811304140836,
+      "shadow_executed_steps": 0,
+      "shadow_failure": "IKFailure: left arm: IK target 4: IK did not converge: position=0.000530925 m rotation=1.53551e-05 rad",
+      "shadow_limit_diagnosis": {
+        "dataset": "yam_global_top80",
+        "arm": "left",
+        "target_index_zero_based": 4,
+        "diagnostic_only": true,
+        "bounded_position_error_m": 0.0005309250833088085,
+        "unbounded_position_error_m": 6.574235795211019e-17,
+        "violations": [
+          {
+            "joint": 2,
+            "q": -0.008119519521363576,
+            "bounds": [
+              0.0,
+              3.66519
+            ]
+          }
+        ]
+      },
+      "artifacts": {
+        "replay_predictions": "/home/ps/zichen/workplace/YAM-Client/outputs/pi-client/server-yam_global_top80-20261019",
+        "shadow": "/home/ps/zichen/workplace/YAM-Client/outputs/pi-client/shadow-yam_global_top80-20261019"
+      }
+    }
+  ],
+  "server": {
+    "dataset": "yam_only",
+    "pid": 92081
+  },
+  "daemon": {
+    "pid": 87908,
+    "state": "safe_hold",
+    "hold_confirmed": true,
+    "session_id": null,
+    "repo_root": "/home/ps/workspace/YAM/gello_software",
+    "code_fingerprint": "54b2680673eeea08a098cf024398d492b1b2b0dc7ef871246d40be30c50bed63",
+    "config_fingerprint": "5212321fdfe33f85e7669a45f04b88358798f6c4cab77e8fc04163c55d8dcd25",
+    "hardware_health": {
+      "ok": true,
+      "reason": "",
+      "sides": {
+        "left": {
+          "ok": true,
+          "reason": "",
+          "control_error": null,
+          "running": true,
+          "control_thread_alive": true,
+          "server_thread_alive": true,
+          "feedback_age_s": 0.0012519359588623047,
+          "comm_freq_hz": 233.3943408478584,
+          "max_temp_mos_c": 33.0,
+          "max_temp_rotor_c": 40.0
+        },
+        "right": {
+          "ok": true,
+          "reason": "",
+          "control_error": null,
+          "running": true,
+          "control_thread_alive": true,
+          "server_thread_alive": true,
+          "feedback_age_s": 0.000232696533203125,
+          "comm_freq_hz": 233.19323191894716,
+          "max_temp_mos_c": 33.0,
+          "max_temp_rotor_c": 37.0
+        }
+      }
+    }
+  },
+  "policy_motion_commands_sent": false,
+  "homing_executed": false,
+  "collision_or_calibration_acceptance": false,
+  "task_success_rate_measured": false,
+  "joint_limit_policy": "checkpoint URDF nominal bounds; daemon XML bounds +/-0.15 rad buffer not adopted"
+}

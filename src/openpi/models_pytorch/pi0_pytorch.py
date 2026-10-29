@@ -13,6 +13,8 @@ import openpi.models_pytorch.preprocessing_pytorch as _preprocessing
 
 def get_safe_dtype(target_dtype, device_type):
     """Get a safe dtype for the given device type."""
+    if device_type == "npu" and target_dtype == torch.float64:
+        return torch.float32
     if device_type == "cpu":
         # CPU doesn't support bfloat16, use float32 instead
         if target_dtype == torch.bfloat16:
@@ -43,6 +45,13 @@ def create_sinusoidal_pos_embedding(
 
 
 def sample_beta(alpha, beta, bsize, device):
+    # Beta(alpha, 1) has an inverse CDF, avoiding unsupported NPU Dirichlet
+    # sampling and its implicit CPU round trip. Pi0.5 uses Beta(1.5, 1).
+    if beta == 1.0:
+        return torch.rand((bsize,), dtype=torch.float32, device=device).pow(1.0 / alpha)
+    if alpha == 1.0:
+        uniform = torch.rand((bsize,), dtype=torch.float32, device=device)
+        return 1.0 - (1.0 - uniform).pow(1.0 / beta)
     alpha_t = torch.as_tensor(alpha, dtype=torch.float32, device=device)
     beta_t = torch.as_tensor(beta, dtype=torch.float32, device=device)
     dist = torch.distributions.Beta(alpha_t, beta_t)
@@ -96,9 +105,22 @@ class PI0Pytorch(nn.Module):
             use_adarms=[False, True] if self.pi05 else [False, False],
             precision=config.dtype,
         )
+        self.paligemma_with_expert.fuse_qkv = config.pytorch_fuse_qkv
+        self.paligemma_with_expert.use_npu_fusion_attention = config.pytorch_npu_fusion_attention
+        self.paligemma_with_expert.use_grouped_mlp = config.pytorch_grouped_mlp
 
         self.action_in_proj = nn.Linear(config.action_dim, action_expert_config.width)
         self.action_out_proj = nn.Linear(action_expert_config.width, config.action_dim)
+
+        # Nonpersistent buffers keep pretrained/checkpoint keys unchanged. FP32
+        # matches Ascend's supported time-encoding precision (no FP64 kernels).
+        fraction = torch.linspace(0.0, 1.0, action_expert_config.width // 2, dtype=torch.float32)
+        self.register_buffer("time_pos_scaling_factor", 2 * math.pi / (4e-3 * 1000**fraction), persistent=False)
+        suffix_mask = torch.zeros(config.action_horizon + (not self.pi05), dtype=torch.bool)
+        suffix_mask[0] = True
+        if not self.pi05:
+            suffix_mask[1] = True
+        self.register_buffer("suffix_att_mask_template", suffix_mask, persistent=False)
 
         if self.pi05:
             self.time_mlp_in = nn.Linear(action_expert_config.width, action_expert_config.width)
@@ -114,19 +136,23 @@ class PI0Pytorch(nn.Module):
 
         # Initialize gradient checkpointing flag
         self.gradient_checkpointing_enabled = False
+        self.gradient_checkpointing_outer_blocks = True
+        self.gradient_checkpointing_outer_suffix = True
 
         msg = "transformers_replace is not installed correctly. Please install it with `uv pip install transformers==4.53.2` and `cp -r ./src/openpi/models_pytorch/transformers_replace/* .venv/lib/python3.11/site-packages/transformers/`."
         try:
-            from transformers.models.siglip import check
+            from transformers.models.siglip import check  # noqa: PLC0415 -- validates the local Transformers patch
 
             if not check.check_whether_transformers_replace_is_installed_correctly():
                 raise ValueError(msg)
         except ImportError:
             raise ValueError(msg) from None
 
-    def gradient_checkpointing_enable(self):
+    def gradient_checkpointing_enable(self, *, outer_blocks: bool = True, outer_suffix: bool = True):
         """Enable gradient checkpointing for memory optimization."""
         self.gradient_checkpointing_enabled = True
+        self.gradient_checkpointing_outer_blocks = outer_blocks
+        self.gradient_checkpointing_outer_suffix = outer_suffix
         self.paligemma_with_expert.paligemma.language_model.gradient_checkpointing = True
         self.paligemma_with_expert.paligemma.vision_tower.gradient_checkpointing = True
         self.paligemma_with_expert.gemma_expert.model.gradient_checkpointing = True
@@ -136,8 +162,9 @@ class PI0Pytorch(nn.Module):
     def gradient_checkpointing_disable(self):
         """Disable gradient checkpointing."""
         self.gradient_checkpointing_enabled = False
+        self.paligemma_with_expert.gradient_checkpointing = False
         self.paligemma_with_expert.paligemma.language_model.gradient_checkpointing = False
-        self.paligemma_with_expert.paligemma.vision_tower.gradient_checkpointing = False
+        self.paligemma_with_expert.paligemma.vision_tower.gradient_checkpointing_disable()
         self.paligemma_with_expert.gemma_expert.model.gradient_checkpointing = False
 
         logging.info("Disabled gradient checkpointing for PI0Pytorch model")
@@ -171,13 +198,7 @@ class PI0Pytorch(nn.Module):
         )
 
     def sample_noise(self, shape, device):
-        return torch.normal(
-            mean=0.0,
-            std=1.0,
-            size=shape,
-            dtype=torch.float32,
-            device=device,
-        )
+        return torch.randn(shape, dtype=torch.float32, device=device)
 
     def sample_time(self, bsize, device):
         time_beta = sample_beta(1.5, 1.0, bsize, device)
@@ -192,7 +213,6 @@ class PI0Pytorch(nn.Module):
         """
         embs = []
         pad_masks = []
-        att_masks = []
 
         # Process images
         for img, img_mask in zip(images, img_masks, strict=True):
@@ -200,15 +220,18 @@ class PI0Pytorch(nn.Module):
             def image_embed_func(img):
                 return self.paligemma_with_expert.embed_image(img)
 
-            img_emb = self._apply_checkpoint(image_embed_func, img)
+            # The vision tower also checkpoints individual layers. Skipping this
+            # outer checkpoint avoids repeating the whole tower during backward.
+            img_emb = (
+                self._apply_checkpoint(image_embed_func, img)
+                if self.gradient_checkpointing_outer_blocks
+                else image_embed_func(img)
+            )
 
             bsize, num_img_embs = img_emb.shape[:2]
 
             embs.append(img_emb)
             pad_masks.append(img_mask[:, None].expand(bsize, num_img_embs))
-
-            # Create attention masks so that image tokens attend to each other
-            att_masks += [0] * num_img_embs
 
         # Process language tokens
         def lang_embed_func(lang_tokens):
@@ -221,17 +244,9 @@ class PI0Pytorch(nn.Module):
         embs.append(lang_emb)
         pad_masks.append(lang_masks)
 
-        # full attention between image and language inputs
-        num_lang_embs = lang_emb.shape[1]
-        att_masks += [0] * num_lang_embs
-
         embs = torch.cat(embs, dim=1)
         pad_masks = torch.cat(pad_masks, dim=1)
-        att_masks = torch.tensor(att_masks, dtype=torch.bool, device=pad_masks.device)
-
-        # Get batch size from the first dimension of the concatenated tensors
-        bsize = pad_masks.shape[0]
-        att_masks = att_masks[None, :].expand(bsize, len(att_masks))
+        att_masks = torch.zeros_like(pad_masks, dtype=torch.bool)
 
         return embs, pad_masks, att_masks
 
@@ -239,7 +254,6 @@ class PI0Pytorch(nn.Module):
         """Embed state, noisy_actions, timestep to prepare for Expert Gemma processing."""
         embs = []
         pad_masks = []
-        att_masks = []
 
         if not self.pi05:
             if self.state_proj.weight.dtype == torch.float32:
@@ -258,14 +272,9 @@ class PI0Pytorch(nn.Module):
             state_mask = torch.ones(bsize, 1, dtype=torch.bool, device=device)
             pad_masks.append(state_mask)
 
-            # Set attention masks so that image and language inputs do not attend to state or actions
-            att_masks += [1]
-
         # Embed timestep using sine-cosine positional encoding with sensitivity in the range [0, 1]
-        time_emb = create_sinusoidal_pos_embedding(
-            timestep, self.action_in_proj.out_features, min_period=4e-3, max_period=4.0, device=timestep.device
-        )
-        time_emb = time_emb.type(dtype=timestep.dtype)
+        sin_input = self.time_pos_scaling_factor[None, :] * timestep[:, None]
+        time_emb = torch.cat([torch.sin(sin_input), torch.cos(sin_input)], dim=1).to(timestep.dtype)
 
         # Fuse timestep + action information using an MLP
         def action_proj_func(noisy_actions):
@@ -304,13 +313,9 @@ class PI0Pytorch(nn.Module):
         action_time_mask = torch.ones(bsize, action_time_dim, dtype=torch.bool, device=timestep.device)
         pad_masks.append(action_time_mask)
 
-        # Set attention masks so that image, language and state inputs do not attend to action tokens
-        att_masks += [1] + ([0] * (self.config.action_horizon - 1))
-
         embs = torch.cat(embs, dim=1)
         pad_masks = torch.cat(pad_masks, dim=1)
-        att_masks = torch.tensor(att_masks, dtype=embs.dtype, device=embs.device)
-        att_masks = att_masks[None, :].expand(bsize, len(att_masks))
+        att_masks = self.suffix_att_mask_template[None, :].expand(bsize, -1)
 
         return embs, pad_masks, att_masks, adarms_cond
 
@@ -358,9 +363,14 @@ class PI0Pytorch(nn.Module):
             )
             return suffix_out
 
-        suffix_out = self._apply_checkpoint(
-            forward_func, prefix_embs, suffix_embs, att_2d_masks_4d, position_ids, adarms_cond
-        )
+        # Gemma checkpoints each joint layer internally; the outer checkpoint is
+        # optional so callers can trade a little activation memory for less recomputation.
+        if self.gradient_checkpointing_outer_blocks and self.gradient_checkpointing_outer_suffix:
+            suffix_out = self._apply_checkpoint(
+                forward_func, prefix_embs, suffix_embs, att_2d_masks_4d, position_ids, adarms_cond
+            )
+        else:
+            suffix_out = forward_func(prefix_embs, suffix_embs, att_2d_masks_4d, position_ids, adarms_cond)
 
         suffix_out = suffix_out[:, -self.config.action_horizon :]
         suffix_out = suffix_out.to(dtype=torch.float32)
