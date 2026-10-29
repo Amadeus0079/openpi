@@ -1049,7 +1049,7 @@
             <div class="stat">
               <p class="caps">TARGET UPDATE RATE</p>
               <b id="hzStat">30</b
-              ><small id="actualHz">Hz · 底层 30 Hz / 等待 ACK</small>
+              ><small id="actualHz">Hz · 模型时间基准</small>
             </div>
           </div>
         </div>
@@ -1083,7 +1083,7 @@
                 <span
                   ><i class="keysolid"></i>IK 前缀
                   <i class="keyline"></i>其余预测</span
-                ><span id="inferenceInfo">等待真实推理数据</span>
+                ><span id="inferenceInfo">等待模型推理</span>
               </div>
               <div class="chartbox">
                 <canvas id="eeChart"></canvas>
@@ -1098,10 +1098,7 @@
               <div class="charthead">
                 <div>
                   <h2>Joint action after IK</h2>
-                  <p>
-                    IK IK 前缀 · 指令 ACK 与关节实测 · 不外推未求解的关节
-                    horizon
-                  </p>
+                  <p>离线 IK 前缀 · 只显示已求解关节</p>
                 </div>
                 <div class="chartcontrols">
                   <select id="jointGroup" aria-label="关节维度组">
@@ -1112,16 +1109,14 @@
                 </div>
               </div>
               <div class="chartbar">
-                <span
-                  ><i class="keyline"></i>IK 计划 <i class="keysolid"></i>ACK ·
-                  浅线实测</span
+                <span><i class="keyline"></i>IK 计划 离线求解</span
                 ><span id="ackInfo">等待离线 IK 结果</span>
               </div>
               <div class="chartbox">
                 <canvas id="jointChart"></canvas>
                 <div class="empty" id="jointEmpty">
                   <strong>等待 IK 计划</strong
-                  ><span>竖线标记决策，阴影展示预测与执行范围</span>
+                  ><span>竖线标记决策，阴影展示预测与 IK 前缀范围</span>
                 </div>
               </div>
               <div class="legend" id="jointLegend"></div>
