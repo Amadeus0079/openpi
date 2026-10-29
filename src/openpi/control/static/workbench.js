@@ -128,7 +128,6 @@ async function post(action, payload = {}) {
 }
 function options(element, items, selected) {
   // Keep native menus mounted while state polling updates camera/daemon status.
-  if (document.activeElement === element && element.options.length) return;
   const changed =
     element.options.length !== items.length ||
     items.some(
@@ -136,6 +135,7 @@ function options(element, items, selected) {
         element.options[index].value !== item.value ||
         element.options[index].text !== item.label,
     );
+  if (!changed && document.activeElement === element) return;
   if (changed)
     element.replaceChildren(...items.map((x) => new Option(x.label, x.value)));
   if (element.value !== selected && items.some((x) => x.value === selected))
