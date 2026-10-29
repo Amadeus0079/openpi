@@ -97,7 +97,17 @@ class Catalog:
             format=kind,
             schema=manifest.get("schema", "openpi"),
             model_sha256=files.get("model.safetensors", {}).get("sha256"),
-            signature=(str(directory.resolve()), stat.st_size, stat.st_mtime_ns, metadata_stat.st_mtime_ns),
+            signature=(
+                str(directory.resolve()),
+                stat.st_dev,
+                stat.st_ino,
+                stat.st_size,
+                stat.st_mtime_ns,
+                stat.st_ctime_ns,
+                metadata_stat.st_ino,
+                metadata_stat.st_mtime_ns,
+                metadata_stat.st_ctime_ns,
+            ),
         )
 
     def scan(self, *, force=False):

@@ -1,4 +1,5 @@
 import json
+import os
 
 import pytest
 
@@ -61,6 +62,20 @@ def test_new_completion_removal_and_replacement_invalidate_selection(tmp_path):
     assert catalog.get(first.id).step == 100
     checkpoint(tmp_path, "task/200")
     assert len(catalog.scan(force=True)) == 2
+
+
+def test_atomic_same_size_replacement_with_preserved_mtime_invalidates_selection(tmp_path):
+    path = checkpoint(tmp_path, "task/100")
+    catalog = Catalog(tmp_path)
+    first = catalog.get("task/100")
+    weights = path / "model.safetensors"
+    before = weights.stat()
+    replacement = path / "replacement"
+    replacement.write_bytes(b"other")
+    os.utime(replacement, ns=(before.st_atime_ns, before.st_mtime_ns))
+    replacement.replace(weights)
+    with pytest.raises(ValueError, match="替换"):
+        catalog.get(first.id, signature=first.signature)
 
 
 def test_path_traversal_and_manifest_escape_are_rejected(tmp_path):
